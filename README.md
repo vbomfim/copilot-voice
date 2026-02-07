@@ -54,6 +54,65 @@ Options:
   --list-sessions     List active Copilot CLI sessions and exit
 ```
 
+## CI/CD Pipeline
+
+Every push and pull request is validated automatically. Releases are built and published when you tag a version.
+
+```
+Push / PR to main ──► CI Workflow
+                       ├── Build on macOS, Linux, Windows
+                       ├── Run unit tests
+                       └── Check code formatting
+
+Push tag v* ─────────► Release Workflow
+                       ├── Build self-contained binary per platform
+                       │   ├── macOS ARM64  (.tar.gz)
+                       │   ├── macOS x64    (.tar.gz)
+                       │   ├── Linux x64    (.tar.gz)
+                       │   └── Windows x64  (.zip)
+                       └── Create GitHub Release with all assets
+```
+
+### CI — Quality Gate
+
+Runs on every push to `main` and every PR:
+
+- **Build** — compiles on all 3 operating systems
+- **Test** — runs unit tests (integration tests excluded)
+- **Format** — checks `dotnet format` compliance
+
+A failing CI blocks the PR from merging.
+
+### Release — Publishing a New Version
+
+To publish a release with downloadable binaries for all platforms:
+
+```bash
+# 1. Make sure CI passes on main
+git checkout main && git pull
+
+# 2. Tag the new version (semantic versioning)
+git tag v0.1.0
+
+# 3. Push the tag — this triggers the release workflow
+git push --tags
+
+# 4. GitHub Actions automatically:
+#    - Builds self-contained single-file executables for 4 targets
+#    - Creates a GitHub Release at github.com/vbomfim/copilot-voice/releases
+#    - Attaches all platform binaries as downloadable assets
+```
+
+Users can then download the binary for their platform from the [Releases](https://github.com/vbomfim/copilot-voice/releases) page — no .NET SDK required.
+
+### Versioning
+
+We use [Semantic Versioning](https://semver.org/):
+
+- **v0.x.x** — pre-release, API may change
+- **v1.0.0** — first stable release
+- **MAJOR.MINOR.PATCH** — breaking.feature.fix
+
 ## License
 
 MIT
