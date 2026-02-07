@@ -2,6 +2,7 @@ using CopilotVoice.Config;
 
 namespace CopilotVoice.Tests.Config;
 
+[Collection("EnvVarTests")]
 public class AzureAuthProviderTests : IDisposable
 {
     private readonly AzureAuthProvider _sut = new();
@@ -51,12 +52,27 @@ public class AzureAuthProviderTests : IDisposable
     }
 
     [Fact]
-    public void ResolveRegion_FallsBackToDefault()
+    public void ResolveRegion_ReturnsConfiguredValue()
     {
         var config = new AppConfig { AzureSpeechRegion = "centralus" };
 
         var region = _sut.ResolveRegion(config);
 
         Assert.Equal("centralus", region);
+    }
+
+    [Fact]
+    public void ResolveKey_EnvVarTakesPriority_OverConfigKey()
+    {
+        Environment.SetEnvironmentVariable("AZURE_SPEECH_KEY", "env-key");
+        var config = new AppConfig
+        {
+            AuthMode = AuthMode.Env,
+            AzureSpeechKey = "config-key"
+        };
+
+        var key = _sut.ResolveKey(config);
+
+        Assert.Equal("env-key", key);
     }
 }
