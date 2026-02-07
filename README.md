@@ -1,4 +1,5 @@
 # Copilot Voice 🎤
+![CI](https://github.com/vbomfim/copilot-voice/actions/workflows/ci.yml/badge.svg)
 
 Push-to-talk voice input for GitHub Copilot CLI.
 
