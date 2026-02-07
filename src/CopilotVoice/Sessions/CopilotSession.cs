@@ -7,6 +7,7 @@ public class CopilotSession
     public string TerminalTitle { get; set; } = string.Empty;
     public string WorkingDirectory { get; set; } = string.Empty;
     public string TerminalApp { get; set; } = string.Empty;
+    public string Label => string.IsNullOrEmpty(WorkingDirectory) ? TerminalTitle : WorkingDirectory;
 
     public override string ToString() =>
         $"{TerminalApp} — {WorkingDirectory} (PID: {ProcessId})";
