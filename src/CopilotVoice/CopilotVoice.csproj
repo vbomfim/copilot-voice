@@ -8,9 +8,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.11" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <PackageReference Include="Azure.ResourceManager.CognitiveServices" Version="1.5.2" />
     <PackageReference Include="Microsoft.CognitiveServices.Speech" Version="1.48.1" />
     <PackageReference Include="SharpHook" Version="7.1.1" />
     <PackageReference Include="System.Text.Json" Version="10.0.2" />
