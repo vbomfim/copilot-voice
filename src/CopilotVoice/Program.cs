@@ -15,18 +15,20 @@ class Program
         var config = configManager.LoadOrCreate();
         cliArgs.ApplyOverrides(config);
 
+        // Reusable session detector
+        var sessionDetector = new Sessions.SessionDetector();
+
         // Handle one-shot commands
         if (cliArgs.ListSessions)
         {
-            var detector = new Sessions.SessionDetector();
-            var sessions = detector.DetectSessions();
+            var sessions = sessionDetector.DetectSessions();
             if (sessions.Count == 0)
             {
                 Console.WriteLine("No active Copilot CLI sessions found.");
                 return;
             }
             foreach (var s in sessions)
-                Console.WriteLine($"  {s}");
+                Console.WriteLine($"  {s.TerminalApp} — {System.IO.Path.GetFileName(s.WorkingDirectory)} (PID: {s.ProcessId})");
             return;
         }
 
@@ -36,7 +38,7 @@ class Program
         var authProvider = new AzureAuthProvider();
         try
         {
-            var (key, region) = authProvider.Resolve(config);
+            var (_, region) = authProvider.Resolve(config);
             Console.WriteLine($"  ✅ Azure Speech: {region}");
         }
         catch (Exception ex)
@@ -47,12 +49,19 @@ class Program
         }
 
         // Detect sessions
-        var sessionDetector = new Sessions.SessionDetector();
         var initialSessions = sessionDetector.DetectSessions();
         Console.WriteLine($"  📡 Found {initialSessions.Count} session(s)");
 
         // Initialize hotkey
-        using var hotkey = new Hotkey.HotkeyListener(config.Hotkey);
+        Hotkey.HotkeyListener hotkey;
+        try { hotkey = new Hotkey.HotkeyListener(config.Hotkey); }
+        catch (ArgumentException ex)
+        {
+            Console.WriteLine($"  ⚠️  Invalid hotkey \"{config.Hotkey}\": {ex.Message}");
+            Console.WriteLine("  Use --hotkey <combo> or edit config file");
+            return;
+        }
+        using var _hotkey = hotkey;
         hotkey.OnPushToTalkStart += () => Console.WriteLine("  🔴 Recording...");
         hotkey.OnPushToTalkStop += () => Console.WriteLine("  ⏹️  Stopped");
 
@@ -71,9 +80,6 @@ class Program
 
         hotkey.Start();
         await exitTcs.Task;
-
-        // Cleanup
-        hotkey.Dispose();
 
         Console.WriteLine("Goodbye!");
     }
