@@ -91,5 +91,3 @@ public class SessionManager : IDisposable
         _watchCts?.Dispose();
     }
 }
-
-public enum SessionTargetMode { AutoFollow, Locked }
