@@ -1,5 +1,5 @@
 using SharpHook;
-using SharpHook.Native;
+using SharpHook.Data;
 
 namespace CopilotVoice.Hotkey;
 
