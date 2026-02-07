@@ -33,9 +33,9 @@ Clicking the tray icon shows a dropdown menu:
 │  🎤🤖 Copilot Voice                │
 │─────────────────────────────────────│
 │                                     │
-│  Active Sessions:                   │
+│  Active Sessions:       🔓 Auto    │  ← toggle: 🔓 Auto / 🔒 Locked
 │                                     │
-│  ● Session 1 — copilot-voice/      │  ← selected (dot = active target)
+│  ● Session 1 — copilot-voice/      │  ← auto-selected (has focus)
 │  ○ Session 2 — async-curl/         │
 │  ○ Session 3 — ~/dev/myproject     │
 │                                     │
@@ -49,6 +49,30 @@ Clicking the tray icon shows a dropdown menu:
 │  🔄 Refresh Sessions               │
 │  ❌ Quit                            │
 └─────────────────────────────────────┘
+
+Session Targeting Modes:
+
+  🔓 Auto-follow (default):
+  ┌─────────────────────────────────────┐
+  │  Active Sessions:       🔓 Auto    │
+  │                                     │
+  │  ● Session 1 — copilot-voice/      │  ← auto-follows focused window
+  │  ○ Session 2 — async-curl/         │
+  │                                     │
+  │  Target follows your active         │
+  │  Copilot CLI terminal window.       │
+  └─────────────────────────────────────┘
+
+  🔒 Locked:
+  ┌─────────────────────────────────────┐
+  │  Active Sessions:    🔒 Locked     │
+  │                                     │
+  │  🔒 Session 1 — copilot-voice/     │  ← pinned, won't change
+  │  ○  Session 2 — async-curl/        │
+  │                                     │
+  │  Locked to Session 1. Click 🔓     │
+  │  to switch back to auto-follow.     │
+  └─────────────────────────────────────┘
 ```
 
 ## 3. Avatar Widget — Floating Window
@@ -57,21 +81,36 @@ A small floating window that shows the animated avatar. Always visible
 when the app is running. Can be repositioned by dragging.
 
 ```
-┌───────────────────────────┐
-│  🤖 Copilot Voice         │
-├───────────────────────────┤
-│                           │
-│       ◠◠◠◠◠               │
-│     ┌─────────┐           │
-│     │ ◕   ◕   │           │    ← Avatar with expressions:
-│     │    ‿    │           │       normal, blink, yawn,
-│     └─────────┘           │       listening, thinking,
-│                           │       speaking, focused, relaxed
-├───────────────────────────┤
-│  💬 "Let me check that"  │    ← Speech bubble (TTS output)
-├───────────────────────────┤
-│  🔨 FOCUS [ 24:59 ]      │    ← Pomodoro timer (optional)
-└───────────────────────────┘
+┌───────────────────────────────┐
+│  🤖 Copilot Voice             │
+├───────────────────────────────┤
+│                               │
+│         ◠◠◠◠◠                 │
+│       ┌─────────┐             │
+│       │ ◕   ◕   │             │    ← Avatar with expressions:
+│       │    ‿    │             │       normal, blink, yawn,
+│       └─────────┘             │       listening, thinking,
+│                               │       speaking, focused, relaxed
+├───────────────────────────────┤
+│  📂 copilot-voice             │    ← Which session is speaking
+│  💬 "Let me check that file"  │    ← Speech bubble (TTS output)
+├───────────────────────────────┤
+│  🔨 FOCUS [ 24:59 ]          │    ← Pomodoro timer (optional)
+└───────────────────────────────┘
+
+  When a different session speaks:
+┌───────────────────────────────┐
+│  🤖 Copilot Voice             │
+├───────────────────────────────┤
+│         ◠◠◠◠◠                 │
+│       ┌─────────┐             │
+│       │ ◕   ◕   │             │
+│       │    ◡    │             │
+│       └─────────┘             │
+├───────────────────────────────┤
+│  📂 async-curl                │    ← Different session ID
+│  💬 "Build succeeded, 0 err"  │
+└───────────────────────────────┘
 
 Avatar States:
   Normal    — idle, occasional blink (~8s) and yawn (~20s)
@@ -81,6 +120,33 @@ Avatar States:
   Focused   — determined expression (pomodoro work)
   Relaxed   — calm expression (pomodoro break)
   Sleeping  — eyes closed (extended idle)
+```
+
+### Multi-Session Communication Model
+
+```
+Voice IN (one target):                Voice OUT (any session):
+  User speaks                           Any Copilot CLI session
+       │                               can send messages to the app
+       ▼                                      │
+  ┌──────────┐                         ┌──────▼──────┐
+  │ Copilot  │ auto-follow             │ Message     │
+  │ Voice    │──────────┐              │ Listener    │
+  │ App      │  or lock │              │ (socket/    │
+  └──────────┘          │              │  file/API)  │
+                        ▼              └──────┬──────┘
+              ┌──────────────┐                │
+              │ Target       │                ▼
+              │ Session      │         ┌──────────────┐
+              └──────────────┘         │ Avatar speaks │
+                                       │ with session  │
+                                       │ label shown   │
+                                       └──────────────┘
+
+  Session identification:
+  • 📂 Label = working directory basename (e.g. "copilot-voice")
+  • Each message includes sender session ID
+  • Avatar shows which session is talking
 ```
 
 ## 4. Recording State — Visual Feedback
