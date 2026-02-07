@@ -20,4 +20,9 @@ public class SessionPickerMenu
     }
 
     public void Refresh() { _detector.Refresh(); }
+
+    public void SelectSession(CopilotSession session)
+    {
+        OnSessionSelected?.Invoke(session);
+    }
 }
