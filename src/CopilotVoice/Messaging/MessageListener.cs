@@ -1,0 +1,152 @@
+using System.Net;
+using System.Text;
+using System.Text.Json;
+
+namespace CopilotVoice.Messaging;
+
+public class MessageListener : IDisposable
+{
+    private readonly HttpListener _listener;
+    private readonly MessageQueue _queue;
+    private CancellationTokenSource? _cts;
+    private Task? _listenTask;
+    private Task? _processTask;
+    private bool _disposed;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    public event Action<InboundMessage>? OnMessageReceived;
+
+    public MessageListener(int port = 7701)
+    {
+        _listener = new HttpListener();
+        _listener.Prefixes.Add($"http://localhost:{port}/");
+        _queue = new MessageQueue();
+    }
+
+    public void Start()
+    {
+        if (_cts is not null)
+            return;
+
+        _cts = new CancellationTokenSource();
+        _listener.Start();
+
+        _processTask = _queue.ProcessAsync(msg => OnMessageReceived?.Invoke(msg), _cts.Token);
+        _listenTask = AcceptRequestsAsync(_cts.Token);
+    }
+
+    public void Stop()
+    {
+        if (_cts is null)
+            return;
+
+        _cts.Cancel();
+        _listener.Stop();
+        _queue.Complete();
+
+        try { _listenTask?.Wait(); } catch { /* expected on cancel */ }
+        try { _processTask?.Wait(); } catch { /* expected on cancel */ }
+
+        _cts.Dispose();
+        _cts = null;
+    }
+
+    private async Task AcceptRequestsAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            HttpListenerContext context;
+            try
+            {
+                context = await _listener.GetContextAsync().WaitAsync(ct);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (HttpListenerException) { break; }
+
+            _ = HandleRequestAsync(context);
+        }
+    }
+
+    private async Task HandleRequestAsync(HttpListenerContext context)
+    {
+        var request = context.Request;
+        var response = context.Response;
+
+        try
+        {
+            if (request.HttpMethod == "GET" && request.Url?.AbsolutePath == "/health")
+            {
+                await WriteResponse(response, 200, """{"status":"ok"}""");
+                return;
+            }
+
+            if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/speak")
+            {
+                await HandleSpeak(request, response);
+                return;
+            }
+
+            await WriteResponse(response, 404, """{"error":"not found"}""");
+        }
+        catch
+        {
+            try { await WriteResponse(response, 500, """{"error":"internal error"}"""); }
+            catch { /* best effort */ }
+        }
+    }
+
+    private async Task HandleSpeak(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        string body;
+        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
+        {
+            body = await reader.ReadToEndAsync();
+        }
+
+        InboundMessage? message;
+        try
+        {
+            message = JsonSerializer.Deserialize<InboundMessage>(body, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            await WriteResponse(response, 400, """{"error":"malformed JSON"}""");
+            return;
+        }
+
+        if (message is null || string.IsNullOrWhiteSpace(message.Text))
+        {
+            await WriteResponse(response, 400, """{"error":"missing required field: text"}""");
+            return;
+        }
+
+        if (message.Timestamp == default)
+            message.Timestamp = DateTime.UtcNow;
+
+        _queue.Enqueue(message);
+        await WriteResponse(response, 202, """{"status":"queued"}""");
+    }
+
+    private static async Task WriteResponse(HttpListenerResponse response, int statusCode, string json)
+    {
+        response.StatusCode = statusCode;
+        response.ContentType = "application/json";
+        var buffer = Encoding.UTF8.GetBytes(json);
+        response.ContentLength64 = buffer.Length;
+        await response.OutputStream.WriteAsync(buffer);
+        response.Close();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Stop();
+        (_listener as IDisposable).Dispose();
+        GC.SuppressFinalize(this);
+    }
+}
