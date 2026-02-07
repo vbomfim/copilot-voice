@@ -21,6 +21,42 @@ public class SessionDetector
 
     public List<CopilotSession> GetCachedSessions() => _sessions;
 
+    public CopilotSession? GetFocusedSession()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            return null;
+
+        try
+        {
+            var frontApp = RunCommand("osascript",
+                "-e \"tell application \\\"System Events\\\" to get name of first application process whose frontmost is true\"")
+                .Trim();
+
+            var terminalApps = new[] { "Terminal", "iTerm2", "Alacritty", "kitty", "WezTerm", "Hyper" };
+            if (!terminalApps.Any(app => frontApp.Contains(app, StringComparison.OrdinalIgnoreCase)))
+                return null;
+
+            // Refresh sessions and find one matching the frontmost terminal
+            if (_sessions.Count == 0)
+                DetectSessions();
+
+            foreach (var session in _sessions)
+                session.IsFocused = false;
+
+            var focused = _sessions.FirstOrDefault(s =>
+                s.TerminalApp.Contains(frontApp, StringComparison.OrdinalIgnoreCase));
+
+            if (focused != null)
+                focused.IsFocused = true;
+
+            return focused;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private List<CopilotSession> DetectMacSessions()
     {
         var sessions = new List<CopilotSession>();
