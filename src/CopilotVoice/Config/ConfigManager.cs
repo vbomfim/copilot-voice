@@ -4,11 +4,20 @@ namespace CopilotVoice.Config;
 
 public class ConfigManager
 {
-    private static readonly string ConfigDir = Path.Combine(
+    private static readonly string DefaultConfigDir = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         ".copilot-voice");
     
-    private static readonly string ConfigFile = Path.Combine(ConfigDir, "config.json");
+    private readonly string ConfigDir;
+    private readonly string ConfigFile;
+
+    public ConfigManager() : this(DefaultConfigDir) { }
+
+    public ConfigManager(string configDir)
+    {
+        ConfigDir = configDir;
+        ConfigFile = Path.Combine(configDir, "config.json");
+    }
     
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

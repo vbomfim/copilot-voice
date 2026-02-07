@@ -12,16 +12,7 @@ public class ConfigManagerTests : IDisposable
     {
         _tempDir = Path.Combine(Path.GetTempPath(), $"copilot-voice-test-{Guid.NewGuid()}");
         _configFile = Path.Combine(_tempDir, "config.json");
-
-        // Use reflection to override the private static ConfigDir/ConfigFile fields
-        var dirField = typeof(ConfigManager).GetField("ConfigDir",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var fileField = typeof(ConfigManager).GetField("ConfigFile",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        dirField.SetValue(null, _tempDir);
-        fileField.SetValue(null, _configFile);
-
-        _sut = new ConfigManager();
+        _sut = new ConfigManager(_tempDir);
     }
 
     public void Dispose()
