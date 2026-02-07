@@ -24,5 +24,13 @@ public class TrayIcon : IDisposable
         TrayState.Focus => "🔨", TrayState.Break => "☕", _ => "🎤"
     };
 
-    public void Dispose() { if (!_disposed) { _disposed = true; } }
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            Hide();
+            _disposed = true;
+        }
+        GC.SuppressFinalize(this);
+    }
 }
