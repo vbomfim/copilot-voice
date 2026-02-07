@@ -1,19 +1,34 @@
-# Copilot Voice 🎤
+# Copilot Voice 🎤🤖
 ![CI](https://github.com/vbomfim/copilot-voice/actions/workflows/ci.yml/badge.svg)
 
-Push-to-talk voice input for GitHub Copilot CLI.
+Your AI pair-programming buddy — with a voice and a face.
 
-**Hold a hotkey → speak → release → your words appear in Copilot CLI.**
+**Talk to Copilot CLI. It talks back. With an animated avatar.**
 
-No typing. No window switching. Just talk.
+## What Is This?
+
+Copilot Voice is a unified companion app for GitHub Copilot CLI that adds:
+
+- 🎤 **Voice Input** — Push-to-talk: hold a hotkey, speak your prompt, release — it appears in Copilot CLI
+- 🔊 **Voice Output** — Copilot's responses are spoken aloud via Azure Text-to-Speech
+- 🤖 **Animated Avatar** — A visual buddy that reacts to speech, blinks, yawns, and shows expressions
+- 🍅 **Pomodoro Timer** — Built-in focus/break timer with voice alerts and avatar state changes
+- 🖥️ **Session Management** — Detects and targets active Copilot CLI sessions across terminals
+
+One app. One install. Full bidirectional voice conversation with your AI pair programmer.
 
 ## Features
 
-- **Push-to-talk** — Global hotkey triggers recording (default: `Ctrl+Shift+V`)
-- **Azure Speech-to-Text** — Fast, accurate transcription via Azure Cognitive Services (free tier: 5 hours/month)
-- **Session picker** — Lists active Copilot CLI sessions so you choose where to send input
-- **Cross-platform** — Mac, Linux, Windows — single self-contained executable
-- **Auto-send** — Transcription is typed into the selected session and Enter is pressed automatically
+| Feature | Description |
+|---------|-------------|
+| **Push-to-talk** | Global hotkey (default: `Ctrl+Shift+V`) triggers recording |
+| **Speech-to-Text** | Azure Cognitive Services — fast, accurate transcription (free tier: 5h/month) |
+| **Text-to-Speech** | Copilot responses spoken aloud with configurable voice |
+| **Animated Avatar** | Multiple themes (robot, waveform, symbols) with idle animations |
+| **Pomodoro Timer** | Focus/break cycles with voice alerts and avatar expressions |
+| **Session Picker** | Lists active Copilot CLI sessions — choose where to send input |
+| **Cross-platform** | macOS, Linux, Windows — single self-contained executable |
+| **Auto-send** | Transcription typed into session with Enter pressed automatically |
 
 ## Quick Start
 
@@ -22,25 +37,68 @@ No typing. No window switching. Just talk.
 # Or build from source:
 dotnet publish -c Release -r osx-arm64 --self-contained
 
-# Run
-./copilot-voice --key YOUR_AZURE_SPEECH_KEY --region YOUR_REGION
+# Run with API key
+./copilot-voice --key YOUR_AZURE_SPEECH_KEY --region centralus
+
+# Or use environment variable
+export AZURE_SPEECH_KEY=your-key
+export AZURE_SPEECH_REGION=centralus
+./copilot-voice
+
+# Or sign in with Microsoft account (auto-detects resources)
+./copilot-voice --auth signin
 ```
 
 ## Requirements
 
-- Azure Speech Services resource (F0 free tier works — 5 hours STT/month)
+- Azure Speech Services resource (F0 free tier: 5h STT + 500K chars TTS/month)
 - Microphone access
+- Speakers/headphones (for voice output)
 
 ## How It Works
 
-1. Start `copilot-voice` — it runs in the background / system tray
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      Copilot Voice App                          │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
+│  │ Tray     │  │ Hotkey   │  │ Speech    │  │ Avatar       │  │
+│  │ Icon/UI  │  │ Listener │  │ Engine    │  │ Engine       │  │
+│  │(Avalonia)│  │(SharpHook│  │(Azure SDK)│  │(Animations,  │  │
+│  │          │  │          │  │ STT + TTS │  │ Expressions) │  │
+│  └────┬─────┘  └────┬─────┘  └─────┬─────┘  └──────┬───────┘  │
+│       │              │              │               │           │
+│       └──────────────┴──────────────┴───────────────┘           │
+│                          │                                      │
+│                    ┌─────┴─────┐    ┌──────────────┐            │
+│                    │ App Core  │────│ Pomodoro     │            │
+│                    │ (Program) │    │ Timer        │            │
+│                    └─────┬─────┘    └──────────────┘            │
+│                          │                                      │
+│         ┌────────────────┼────────────────┐                     │
+│         │                │                │                     │
+│  ┌──────┴──────┐  ┌──────┴──────┐  ┌─────┴──────┐             │
+│  │ Session     │  │ Input       │  │ Config     │             │
+│  │ Detector    │  │ Sender      │  │ Manager    │             │
+│  └─────────────┘  └──────┬──────┘  └────────────┘             │
+│                          │                                      │
+└──────────────────────────┼──────────────────────────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ Copilot CLI     │
+                  │ Terminal Session │
+                  └─────────────────┘
+```
+
+### The Full Loop
+
+1. Start `copilot-voice` — avatar appears, tray icon shows in menu bar
 2. It detects active Copilot CLI sessions (terminal windows)
-3. Hold the push-to-talk hotkey
-4. Speak your prompt
-5. Release the hotkey
-6. Audio is sent to Azure Speech-to-Text
-7. Transcription is typed into the selected Copilot CLI session
-8. Enter is pressed automatically — Copilot starts working
+3. **Voice In**: Hold hotkey → speak → release → transcription sent to Copilot CLI
+4. **Voice Out**: Copilot's response is spoken aloud via TTS, avatar animates
+5. **Avatar**: Shows expressions (listening, thinking, speaking), blinks, yawns when idle
+6. **Pomodoro**: Optional focus timer — avatar changes to focused/relaxed expressions
 
 ## Configuration
 
@@ -49,10 +107,33 @@ copilot-voice --help
 
 Options:
   --key <key>         Azure Speech subscription key
-  --region <region>   Azure Speech region (e.g., centralus)
+  --region <region>   Azure Speech region (default: centralus)
+  --auth <mode>       Auth mode: signin, apikey, or env (default: auto-detect)
   --hotkey <combo>    Push-to-talk hotkey (default: Ctrl+Shift+V)
+  --voice <name>      TTS voice name (default: en-US-JennyNeural)
+  --theme <name>      Avatar theme: robot, waveform, symbols
   --session <id>      Target a specific session (skip picker)
   --list-sessions     List active Copilot CLI sessions and exit
+  --pomodoro <cmd>    Start/stop pomodoro (start[:work:break] | stop)
+
+Environment variables:
+  AZURE_SPEECH_KEY    Azure Speech subscription key (priority over config)
+  AZURE_SPEECH_REGION Azure Speech region
+```
+
+Config file: `~/.copilot-voice/config.json`
+
+## Avatar Themes
+
+```
+🤖 Robot (default)          🌊 Waveform               ✦ Symbols
+┌───────────────────┐      ┌───────────────────┐     ┌───────────────────┐
+│     ◠◠◠◠◠         │      │                   │     │                   │
+│   ┌─────────┐     │      │   ▁▂▃▅▂▁▂▃▅▂▁    │     │   ◆ ◇ ◆ ◇ ◆     │
+│   │ ◕   ◕   │     │      │   ▁▂▃▅▂▁▂▃▅▂▁    │     │   ◇ ◆ ◇ ◆ ◇     │
+│   │    ‿    │     │      │   ▔▔▔▔▔▔▔▔▔▔▔    │     │   ◆ ◇ ◆ ◇ ◆     │
+│   └─────────┘     │      │                   │     │                   │
+└───────────────────┘      └───────────────────┘     └───────────────────┘
 ```
 
 ## CI/CD Pipeline
@@ -86,8 +167,6 @@ A failing CI blocks the PR from merging.
 
 ### Release — Publishing a New Version
 
-To publish a release with downloadable binaries for all platforms:
-
 ```bash
 # 1. Make sure CI passes on main
 git checkout main && git pull
@@ -104,15 +183,11 @@ git push --tags
 #    - Attaches all platform binaries as downloadable assets
 ```
 
-Users can then download the binary for their platform from the [Releases](https://github.com/vbomfim/copilot-voice/releases) page — no .NET SDK required.
+Users download from the [Releases](https://github.com/vbomfim/copilot-voice/releases) page — no .NET SDK required.
 
 ### Versioning
 
-We use [Semantic Versioning](https://semver.org/):
-
-- **v0.x.x** — pre-release, API may change
-- **v1.0.0** — first stable release
-- **MAJOR.MINOR.PATCH** — breaking.feature.fix
+[Semantic Versioning](https://semver.org/): **v0.x.x** pre-release → **v1.0.0** stable → **MAJOR.MINOR.PATCH**
 
 ## License
 
