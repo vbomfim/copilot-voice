@@ -1,0 +1,68 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CopilotVoice.Views.AvatarWindow"
+        Title="🤖 Copilot Voice"
+        Width="280" Height="420"
+        CanResize="False"
+        SystemDecorations="Full"
+        WindowStartupLocation="Manual"
+        Background="#1E1E2E"
+        Topmost="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto,Auto">
+
+        <!-- Header -->
+        <Border Grid.Row="0" Padding="12,8" Background="#2D2D44">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="🤖" FontSize="18" VerticalAlignment="Center"/>
+                <TextBlock Text="Copilot Voice" FontSize="14" FontWeight="Bold"
+                           Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                <TextBlock x:Name="StatusBadge" Text="● Starting..." FontSize="11"
+                           Foreground="#F9E2AF" VerticalAlignment="Center" Margin="8,0,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Avatar Face -->
+        <Border Grid.Row="1" Padding="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock x:Name="AvatarFace"
+                       FontFamily="Cascadia Mono, Menlo, Monaco, monospace"
+                       FontSize="20"
+                       Foreground="#CDD6F4"
+                       TextAlignment="Center"
+                       HorizontalAlignment="Center"
+                       LineHeight="26"
+                       Text="  ◠◠◠  &#10; ┌─────┐&#10; │ ◕ ◕ │&#10; │  ‿  │&#10; └─────┘"/>
+        </Border>
+
+        <!-- Speech Bubble / Session -->
+        <Border Grid.Row="2" Padding="12,6" Background="#313244" CornerRadius="6" Margin="12,0">
+            <StackPanel Spacing="2">
+                <TextBlock x:Name="SessionLabel" Text="📂 waiting..."
+                           FontSize="11" Foreground="#94A3B8"/>
+                <TextBlock x:Name="SpeechBubble" Text=""
+                           FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"
+                           MaxHeight="40"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Log area -->
+        <Border Grid.Row="3" Padding="8,4" Background="#181825" Margin="12,4" CornerRadius="4">
+            <ScrollViewer Height="60">
+                <TextBlock x:Name="LogArea" Text="" FontSize="9"
+                           FontFamily="Cascadia Mono, Menlo, Monaco, monospace"
+                           Foreground="#6C7086" TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Timer / Status Bar -->
+        <Border Grid.Row="4" Padding="12,8" Background="#2D2D44" Margin="0,0,0,0">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="HotkeyLabel" Text="⌨️ Ctrl+Shift+V"
+                           FontSize="11" Foreground="#6C7086" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TimerLabel" Grid.Column="1" Text=""
+                           FontSize="11" Foreground="#F9E2AF" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+    </Grid>
+</Window>
