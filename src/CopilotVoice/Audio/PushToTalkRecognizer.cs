@@ -7,6 +7,7 @@ namespace CopilotVoice.Audio;
 public class PushToTalkRecognizer : IDisposable
 {
     private SpeechRecognizer? _recognizer;
+    private AudioConfig? _audioConfig;
     private readonly AppConfig _config;
     private readonly AzureAuthProvider _authProvider;
     private readonly List<string> _recognizedSegments = new();
@@ -14,6 +15,7 @@ public class PushToTalkRecognizer : IDisposable
 
     public event Action<string>? OnPartialResult;
     public event Action<string>? OnError;
+    public event Action<string>? OnLog;
 
     public PushToTalkRecognizer(AppConfig config)
     {
@@ -29,39 +31,83 @@ public class PushToTalkRecognizer : IDisposable
         var speechConfig = SpeechConfig.FromSubscription(key, region);
         speechConfig.SpeechRecognitionLanguage = _config.Language;
 
-        var audioConfig = AudioConfig.FromDefaultMicrophoneInput();
-        _recognizer = new SpeechRecognizer(speechConfig, audioConfig);
+        OnLog?.Invoke($"STT: connecting to {region}, lang={_config.Language}");
+
+        _audioConfig = AudioConfig.FromDefaultMicrophoneInput();
+        _recognizer = new SpeechRecognizer(speechConfig, _audioConfig);
 
         _recognizer.Recognizing += (s, e) =>
         {
             if (e.Result.Reason == ResultReason.RecognizingSpeech)
+            {
+                OnLog?.Invoke($"STT partial: {e.Result.Text}");
                 OnPartialResult?.Invoke(e.Result.Text);
+            }
         };
 
         _recognizer.Recognized += (s, e) =>
         {
             if (e.Result.Reason == ResultReason.RecognizedSpeech && !string.IsNullOrEmpty(e.Result.Text))
+            {
+                OnLog?.Invoke($"STT final segment: {e.Result.Text}");
                 _recognizedSegments.Add(e.Result.Text);
+            }
+            else if (e.Result.Reason == ResultReason.NoMatch)
+            {
+                OnLog?.Invoke("STT: no match (silence or noise)");
+            }
         };
+
+        _recognizer.SessionStarted += (s, e) =>
+            OnLog?.Invoke("STT: session started");
+
+        _recognizer.SessionStopped += (s, e) =>
+            OnLog?.Invoke("STT: session stopped");
 
         _recognizer.Canceled += (s, e) =>
         {
+            OnLog?.Invoke($"STT canceled: {e.Reason} — {e.ErrorCode}");
             if (e.Reason == CancellationReason.Error)
                 OnError?.Invoke($"{e.ErrorCode}: {e.ErrorDetails}");
         };
 
         await _recognizer.StartContinuousRecognitionAsync();
+        OnLog?.Invoke("STT: recording started");
     }
 
     public async Task<string> StopRecordingAndTranscribeAsync()
     {
         if (_recognizer == null) return string.Empty;
 
-        await _recognizer.StopContinuousRecognitionAsync();
+        OnLog?.Invoke("STT: stopping recognition...");
+
+        try
+        {
+            // Timeout after 5 seconds to avoid hanging
+            var stopTask = _recognizer.StopContinuousRecognitionAsync();
+            if (await Task.WhenAny(stopTask, Task.Delay(5000)) != stopTask)
+            {
+                OnLog?.Invoke("STT: stop timed out after 5s");
+                OnError?.Invoke("Recognition stop timed out");
+            }
+            else
+            {
+                OnLog?.Invoke("STT: recognition stopped");
+            }
+        }
+        catch (Exception ex)
+        {
+            OnLog?.Invoke($"STT stop error: {ex.Message}");
+        }
+
         _recognizer.Dispose();
         _recognizer = null;
+        _audioConfig?.Dispose();
+        _audioConfig = null;
 
-        return string.Join(" ", _recognizedSegments);
+        var result = string.Join(" ", _recognizedSegments);
+        OnLog?.Invoke($"STT result: \"{result}\" ({_recognizedSegments.Count} segments)");
+        return result;
     }
 
     public void Dispose()
@@ -69,6 +115,7 @@ public class PushToTalkRecognizer : IDisposable
         if (_disposed) return;
         _disposed = true;
         _recognizer?.Dispose();
+        _audioConfig?.Dispose();
         GC.SuppressFinalize(this);
     }
 }
