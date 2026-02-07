@@ -152,6 +152,8 @@ class Program
 
         var isRecording = false;
 
+        hotkey.OnError += msg => Console.WriteLine($"  🔑 Hotkey: {msg}");
+
         hotkey.OnPushToTalkStart += async () =>
         {
             if (isRecording) return;
@@ -218,6 +220,15 @@ class Program
 
         // ── Start ───────────────────────────────────────────────
         Console.WriteLine($"  ⌨️  Hotkey: {config.Hotkey}");
+
+        // macOS: check Accessibility permission hint
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+                System.Runtime.InteropServices.OSPlatform.OSX))
+        {
+            Console.WriteLine("  💡 macOS: ensure Input Monitoring is enabled for your terminal");
+            Console.WriteLine("     System Settings → Privacy & Security → Input Monitoring");
+        }
+
         Console.WriteLine("  Ready! Hold hotkey to speak. Ctrl+C to quit.");
         Console.WriteLine();
 

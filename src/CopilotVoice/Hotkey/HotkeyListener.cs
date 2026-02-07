@@ -13,6 +13,7 @@ public class HotkeyListener : IDisposable
 
     public event Action? OnPushToTalkStart;
     public event Action? OnPushToTalkStop;
+    public event Action<string>? OnError;
 
     public HotkeyListener(string hotkeyCombination)
     {
@@ -38,15 +39,30 @@ public class HotkeyListener : IDisposable
         _hook = new SimpleGlobalHook();
         _hook.KeyPressed += OnKeyPressed;
         _hook.KeyReleased += OnKeyReleased;
-        
-        // Run hook on background thread
-        Task.Run(() => _hook.Run());
+        _hook.HookEnabled += (_, _) =>
+            OnError?.Invoke("Global hook enabled — listening for keys");
+
+        // RunAsync is preferred — handles event loop correctly on all platforms
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _hook.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                OnError?.Invoke($"Hook failed: {ex.Message}. On macOS, grant Input Monitoring permission to your terminal in System Settings → Privacy & Security → Input Monitoring.");
+            }
+        });
     }
 
     public void Stop()
     {
-        _hook?.Dispose();
-        _hook = null;
+        if (_hook != null)
+        {
+            try { _hook.Dispose(); } catch { /* best effort */ }
+            _hook = null;
+        }
         _isActive = false;
         _pressedKeys.Clear();
     }
