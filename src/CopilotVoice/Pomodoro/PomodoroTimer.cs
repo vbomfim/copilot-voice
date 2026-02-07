@@ -3,6 +3,7 @@ namespace CopilotVoice.Pomodoro;
 public class PomodoroTimer : IDisposable
 {
     private CancellationTokenSource? _cts;
+    private PomodoroPhase _pausedPhase;
     private bool _disposed;
 
     public int WorkMinutes { get; }
@@ -39,6 +40,8 @@ public class PomodoroTimer : IDisposable
         _cts = null;
         CurrentPhase = PomodoroPhase.Stopped;
         Remaining = TimeSpan.Zero;
+        OnPhaseChanged?.Invoke(PomodoroPhase.Stopped);
+        OnTick?.Invoke(TimeSpan.Zero);
     }
 
     public void Pause()
@@ -46,6 +49,7 @@ public class PomodoroTimer : IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (IsRunning)
         {
+            _pausedPhase = CurrentPhase;
             _cts?.Cancel();
             CurrentPhase = PomodoroPhase.Paused;
             OnPhaseChanged?.Invoke(CurrentPhase);
@@ -60,9 +64,9 @@ public class PomodoroTimer : IDisposable
 
         _cts?.Dispose();
         _cts = new CancellationTokenSource();
-        CurrentPhase = PomodoroPhase.Work;
+        CurrentPhase = _pausedPhase;
         OnPhaseChanged?.Invoke(CurrentPhase);
-        _ = CountdownAsync(Remaining, _cts.Token);
+        _ = ResumeAsync(Remaining, _cts.Token);
     }
 
     private async Task RunAsync(CancellationToken ct)
@@ -80,6 +84,24 @@ public class PomodoroTimer : IDisposable
             OnPhaseChanged?.Invoke(CurrentPhase);
             await CountdownAsync(TimeSpan.FromMinutes(BreakMinutes), ct);
         }
+    }
+
+    private async Task ResumeAsync(TimeSpan remaining, CancellationToken ct)
+    {
+        await CountdownAsync(remaining, ct);
+        if (ct.IsCancellationRequested) return;
+
+        // Transition to the next phase after the resumed countdown completes
+        if (CurrentPhase == PomodoroPhase.Work)
+        {
+            CurrentPhase = PomodoroPhase.Break;
+            OnPhaseChanged?.Invoke(CurrentPhase);
+            await CountdownAsync(TimeSpan.FromMinutes(BreakMinutes), ct);
+        }
+
+        // After break (or if resumed from break), loop back into full work/break cycles
+        if (!ct.IsCancellationRequested)
+            await RunAsync(ct);
     }
 
     private async Task CountdownAsync(TimeSpan duration, CancellationToken ct)
