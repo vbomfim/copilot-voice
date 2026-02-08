@@ -25,6 +25,7 @@ public sealed class AppServices : IDisposable
     private MessageListener? _messageListener;
     private Hotkey.HotkeyListener? _hotkey;
     private bool _isRecording;
+    private bool _isBusy; // prevents re-entrant hotkey handling
     private bool _disposed;
 
     // UI events
@@ -172,7 +173,7 @@ public sealed class AppServices : IDisposable
 
     private async void OnHotkeyDown()
     {
-        if (_isRecording || _stt == null) return;
+        if (_isRecording || _isBusy || _stt == null) return;
         _isRecording = true;
 
         Log("Hotkey pressed — starting recording");
@@ -195,6 +196,7 @@ public sealed class AppServices : IDisposable
     {
         if (!_isRecording || _stt == null) return;
         _isRecording = false;
+        _isBusy = true;
 
         Log("Hotkey released — stopping recording");
         OnStateChanged?.Invoke("Transcribing");
@@ -250,14 +252,16 @@ public sealed class AppServices : IDisposable
                 }
             });
 
-            await Task.Delay(2000);
-            OnSpeechBubble?.Invoke(null, null);
             OnStateChanged?.Invoke("Ready");
         }
         catch (Exception ex)
         {
             Log($"Error: {ex}");
             OnStateChanged?.Invoke("Error");
+        }
+        finally
+        {
+            _isBusy = false;
         }
     }
 

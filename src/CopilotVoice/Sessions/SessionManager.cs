@@ -35,7 +35,10 @@ public class SessionManager : IDisposable
         if (Mode == SessionTargetMode.Locked)
             return _lockedSession;
 
-        return _detector.GetFocusedSession() ?? _currentTarget;
+        var focused = _detector.GetFocusedSession();
+        if (focused != null && !IsSelf(focused))
+            return focused;
+        return _currentTarget;
     }
 
     public void StartWatching(int pollIntervalMs = 500)
@@ -47,8 +50,7 @@ public class SessionManager : IDisposable
             if (sessions.Count == 0)
                 sessions = _detector.DetectSessions();
             // Prefer sessions that aren't copilot-voice itself
-            var candidate = sessions.FirstOrDefault(s =>
-                !s.Label.Contains("copilot-voice", StringComparison.OrdinalIgnoreCase))
+            var candidate = sessions.FirstOrDefault(s => !IsSelf(s))
                 ?? sessions.FirstOrDefault();
             if (candidate != null)
                 UpdateTarget(candidate);
@@ -72,7 +74,7 @@ public class SessionManager : IDisposable
                 if (Mode == SessionTargetMode.AutoFollow)
                 {
                     var focused = _detector.GetFocusedSession();
-                    if (focused != null && focused.Id != _currentTarget?.Id)
+                    if (focused != null && !IsSelf(focused) && focused.Id != _currentTarget?.Id)
                         UpdateTarget(focused);
                 }
                 else if (Mode == SessionTargetMode.Locked && _lockedSession != null)
@@ -96,6 +98,10 @@ public class SessionManager : IDisposable
         _currentTarget = session;
         OnTargetChanged?.Invoke(session);
     }
+
+    private static bool IsSelf(CopilotSession session) =>
+        session.Label.Contains("copilot-voice", StringComparison.OrdinalIgnoreCase) ||
+        session.ProcessId == Environment.ProcessId;
 
     public void Dispose()
     {

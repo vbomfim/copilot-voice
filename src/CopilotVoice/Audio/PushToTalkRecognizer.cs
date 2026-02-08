@@ -100,6 +100,9 @@ public class PushToTalkRecognizer : IDisposable
             OnLog?.Invoke($"STT stop error: {ex.Message}");
         }
 
+        // Delay disposal to let native callbacks finish
+        await Task.Delay(200);
+
         _recognizer.Dispose();
         _recognizer = null;
         _audioConfig?.Dispose();
