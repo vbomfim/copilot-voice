@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using CopilotVoice.UI.Avatar;
 
 namespace CopilotVoice.Views;
 
@@ -10,6 +11,7 @@ namespace CopilotVoice.Views;
 public class PixelAvatarControl : Control
 {
     private string[]? _frame;
+    private string[]? _colorMap;
     private double _fontSize = 14;
     private readonly Typeface _typeface = new("Cascadia Mono, Menlo, Consolas, monospace");
 
@@ -20,21 +22,95 @@ public class PixelAvatarControl : Control
     private static readonly SolidColorBrush Dark = new(Color.Parse("#CDD6F4")); // default/face
 
     // Per-character color map: P=purple, C=cyan, G=green, .=default
-    private static readonly string[] ColorMap = [
+    // Rows 0-4 and 8 are the same for all expressions; rows 5-7 vary
+    private static readonly string[] ColorMapTop = [
         ".......PPPPPPPP.......",  // row 0: dome purple
         "...CCCCCCCCCCCCCCCC...",  // row 1: goggles cyan
         "..CC......CC......CC..",  // row 2: goggles cyan frame
         "..CCC....CCCC....CCC..",  // row 3: goggles cyan frame
         ".PPPCCCCCCCCCCCCCCPPP.",  // row 4: bridge cyan, edges purple
-        "PPPP.....G..G.....PPPP",  // row 5: cheeks purple, eyes green
-        "PPPP.....G..G.....PPPP",  // row 6: cheeks purple, eyes green
-        "PPPPP............PPPPP",  // row 7: cheeks purple
-        "...PPPPPPPPPPPPPPPP...",  // row 8: jaw purple
     ];
 
-    public void SetFrame(string[] frame)
+    // Expression-specific color maps for rows 5-7
+    private static readonly Dictionary<string, string[]> EyeMouthColors = new()
+    {
+        // Normal, Speaking: green eyes visible
+        ["normal"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: cheeks purple, eyes green
+            "PPPP.....G..G.....PPPP",  // row 6: cheeks purple, eyes green
+            "PPPPP............PPPPP",  // row 7: cheeks purple
+        ],
+        // Blink, HalfBlink, YawnWide, Focused: single-row eye marker
+        ["singleEye"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: eye symbols still green
+            "PPPP..............PPPP",  // row 6: no eyes below
+            "PPPPP............PPPPP",  // row 7
+        ],
+        // Thinking: eyes shifted right by 1
+        ["think"] = [
+            "PPPP......G..G....PPPP",  // row 5: shifted eyes
+            "PPPP......G..G....PPPP",  // row 6: shifted eyes
+            "PPPPP............PPPPP",  // row 7
+        ],
+        // Sleeping: ᶻ on row 6
+        ["sleep"] = [
+            "PPPP.....G..G.....PPPP",  // row 5
+            "PPPP..............PPPP",  // row 6: ᶻ default color
+            "PPPPP............PPPPP",  // row 7
+        ],
+        // Listening: ◉ eyes
+        ["listen"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: ◉ green
+            "PPPP..............PPPP",  // row 6: blank
+            "PPPPP............PPPPP",  // row 7
+        ],
+        // Mouth open (speaking, yawn)
+        ["mouthOpen"] = [
+            "PPPP.....G..G.....PPPP",
+            "PPPP.....G..G.....PPPP",
+            "PPPPP............PPPPP",
+        ],
+        // Smile: happy squint eyes
+        ["smile"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: ▀ green
+            "PPPP..............PPPP",  // row 6: blank
+            "PPPPP............PPPPP",  // row 7
+        ],
+        // Cry: eyes with tears
+        ["cry"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: eyes green
+            "PPPP.....G..G.....PPPP",  // row 6: tears near eyes
+            "PPPPP............PPPPP",  // row 7
+        ],
+    };
+
+    private static readonly string ColorMapRow8 = "...PPPPPPPPPPPPPPPP...";  // row 8: jaw purple
+
+    private static string[] GetColorMapForExpression(AvatarExpression expression)
+    {
+        var key = expression switch
+        {
+            AvatarExpression.Blink or AvatarExpression.HalfBlink or AvatarExpression.YawnWide
+                or AvatarExpression.Focused => "singleEye",
+            AvatarExpression.Thinking => "think",
+            AvatarExpression.Sleeping => "sleep",
+            AvatarExpression.Listening => "listen",
+            AvatarExpression.Smile => "smile",
+            AvatarExpression.Cry => "cry",
+            _ => "normal",
+        };
+        var bottom = EyeMouthColors[key];
+        var result = new string[9];
+        ColorMapTop.CopyTo(result, 0);
+        bottom.CopyTo(result, 5);
+        result[8] = ColorMapRow8;
+        return result;
+    }
+
+    public void SetFrame(string[] frame, AvatarExpression expression = AvatarExpression.Normal)
     {
         _frame = frame;
+        _colorMap = GetColorMapForExpression(expression);
         InvalidateVisual();
         InvalidateMeasure();
     }
@@ -48,9 +124,9 @@ public class PixelAvatarControl : Control
 
     private SolidColorBrush GetBrush(int row, int col)
     {
-        if (row < ColorMap.Length && col < ColorMap[row].Length)
+        if (_colorMap != null && row < _colorMap.Length && col < _colorMap[row].Length)
         {
-            return ColorMap[row][col] switch
+            return _colorMap[row][col] switch
             {
                 'P' => Purple,
                 'C' => Cyan,

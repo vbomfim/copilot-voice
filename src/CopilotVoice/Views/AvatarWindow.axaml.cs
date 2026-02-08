@@ -276,7 +276,7 @@ public partial class AvatarWindow : Window
 
     private void UpdateFace(AvatarExpression expression)
     {
-        AvatarPixel.SetFrame(PixelAvatarData.GetFrame(expression));
+        AvatarPixel.SetFrame(PixelAvatarData.GetFrame(expression), expression);
     }
 
     private void UpdateStatus(string state)

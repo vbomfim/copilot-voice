@@ -15,7 +15,9 @@ public enum AvatarExpression
     Speaking,
     Focused,
     Relaxed,
-    Sleeping
+    Sleeping,
+    Smile,
+    Cry
 }
 
 /// <summary>
