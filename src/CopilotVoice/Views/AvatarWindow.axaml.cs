@@ -71,6 +71,21 @@ public partial class AvatarWindow : Window
                 e.Pointer.Capture(null);
             }
         };
+
+        // Push-to-talk button (hold to record)
+        MicButton.AddHandler(Avalonia.Input.InputElement.PointerPressedEvent, (_, e) =>
+        {
+            _services?.OnMicButtonDown();
+            MicButton.Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F38BA8"));
+            e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+        MicButton.AddHandler(Avalonia.Input.InputElement.PointerReleasedEvent, (_, e) =>
+        {
+            _services?.OnMicButtonUp();
+            MicButton.Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#3B3B5C"));
+            e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
     public void SetServices(AppServices services)

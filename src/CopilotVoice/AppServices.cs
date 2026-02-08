@@ -46,16 +46,23 @@ public sealed class AppServices : IDisposable
         _configManager = new ConfigManager();
         Config = _configManager.LoadOrCreate();
 
-        // Apply env var overrides
+        // Apply env var overrides and persist to config
         var envKey = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
         var envRegion = Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION");
-        if (!string.IsNullOrEmpty(envKey))
+        bool configChanged = false;
+        if (!string.IsNullOrEmpty(envKey) && Config.AzureSpeechKey != envKey)
         {
             Config.AzureSpeechKey = envKey;
             Config.AuthMode = AuthMode.Env;
+            configChanged = true;
         }
-        if (!string.IsNullOrEmpty(envRegion))
+        if (!string.IsNullOrEmpty(envRegion) && Config.AzureSpeechRegion != envRegion)
+        {
             Config.AzureSpeechRegion = envRegion;
+            configChanged = true;
+        }
+        if (configChanged)
+            _configManager.Save(Config);
 
         _sessionDetector = new SessionDetector();
         _sessionManager = new SessionManager(_sessionDetector);
@@ -117,6 +124,8 @@ public sealed class AppServices : IDisposable
                 _tts.OnError += err => Log($"TTS error: {err}");
                 Log($"TTS: {Config.VoiceName}");
                 _voiceName = Config.VoiceName;
+                _azureSpeechKey = Config.AzureSpeechKey;
+                _azureSpeechRegion = Config.AzureSpeechRegion;
             }
             catch (Exception ex)
             {
@@ -238,6 +247,10 @@ public sealed class AppServices : IDisposable
     }
 
     private readonly SemaphoreSlim _recordLock = new(1, 1);
+
+    // Public wrappers for UI push-to-talk button
+    public void OnMicButtonDown() => OnHotkeyDown();
+    public void OnMicButtonUp() => OnHotkeyUp();
 
     private async void OnHotkeyDown()
     {
@@ -366,6 +379,8 @@ public sealed class AppServices : IDisposable
     }
 
     private static string _voiceName = "en-US-AndrewMultilingualNeural";
+    private static string? _azureSpeechKey;
+    private static string? _azureSpeechRegion;
 
     public static async Task SayStaticAsync(string text)
     {
@@ -374,8 +389,11 @@ public sealed class AppServices : IDisposable
         try
         {
             // Try Azure TTS first (cross-platform)
-            var key = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
-            var region = Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION") ?? "centralus";
+            var key = _azureSpeechKey
+                ?? Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
+            var region = _azureSpeechRegion
+                ?? Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION")
+                ?? "centralus";
             Console.WriteLine($"[TTS] Azure key present: {!string.IsNullOrEmpty(key)}, region: {region}, voice: {_voiceName}");
 
             if (!string.IsNullOrEmpty(key))
