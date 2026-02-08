@@ -270,9 +270,14 @@ public sealed class AppServices : IDisposable
         }
         catch (Exception ex)
         {
+            var friendly = ex.Message.Contains("0x15") || ex.Message.Contains("MIC_ERROR")
+                ? "No microphone available. Please connect a mic and try again."
+                : ex.Message.Contains("0x5") || ex.Message.Contains("PERMISSION")
+                ? "Microphone permission denied. Grant access in System Settings → Privacy → Microphone."
+                : $"Mic error: {ex.Message}";
             Log($"Mic error: {ex.Message}");
             OnStateChanged?.Invoke("Error");
-            OnSpeechBubble?.Invoke($"Mic error: {ex.Message}", null);
+            OnSpeechBubble?.Invoke(friendly, null);
             _isRecording = false;
         }
         finally
