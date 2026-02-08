@@ -190,6 +190,28 @@ public class App : Application
         };
         menu.Add(toggleAvatarItem);
 
+        var topmostItem = new NativeMenuItem("📌 Always on Top ✓");
+        topmostItem.Click += (_, _) =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    if (_avatarWindow != null)
+                    {
+                        _avatarWindow.Topmost = !_avatarWindow.Topmost;
+                        topmostItem.Header = _avatarWindow.Topmost
+                            ? "📌 Always on Top ✓" : "📌 Always on Top";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[copilot-voice] Topmost error: {ex.Message}");
+                }
+            });
+        };
+        menu.Add(topmostItem);
+
         var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
         refreshItem.Click += (_, _) => _services?.RefreshSessions();
         menu.Add(refreshItem);

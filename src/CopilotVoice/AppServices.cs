@@ -38,6 +38,8 @@ public sealed class AppServices : IDisposable
     public event Action<string?, TimeSpan>? OnTimerTick;
     public event Action<List<CopilotSession>>? OnSessionsRefreshed;
     public event Action<string>? OnLog;
+    // Window control: action, x, y, position → result
+    public event Func<string, int?, int?, string?, Task<string>>? OnWindowControl;
 
     public AppServices()
     {
@@ -213,6 +215,12 @@ public sealed class AppServices : IDisposable
             {
                 OnStateChanged?.Invoke(expr);
             };
+            Mcp.McpToolHandler.OnWindowControl = async (action, x, y, position) =>
+            {
+                if (OnWindowControl != null)
+                    return await OnWindowControl(action, x, y, position);
+                return "Window control not available";
+            };
             _mcpSseTransport = new Mcp.McpSseTransport(_mcpServer, 7702);
             _mcpSseTransport.OnLog += msg => Log(msg);
             _mcpSseTransport.Start();
@@ -361,12 +369,14 @@ public sealed class AppServices : IDisposable
 
     public static async Task SayStaticAsync(string text)
     {
+        Console.WriteLine($"[TTS] SayStaticAsync called: \"{text[..Math.Min(text.Length, 50)]}...\"");
         var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.wav");
         try
         {
             // Try Azure TTS first (cross-platform)
             var key = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
             var region = Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION") ?? "centralus";
+            Console.WriteLine($"[TTS] Azure key present: {!string.IsNullOrEmpty(key)}, region: {region}, voice: {_voiceName}");
 
             if (!string.IsNullOrEmpty(key))
             {
@@ -377,6 +387,7 @@ public sealed class AppServices : IDisposable
                 var result = await synthesizer.SpeakTextAsync(text);
                 if (result.Reason == Microsoft.CognitiveServices.Speech.ResultReason.SynthesizingAudioCompleted)
                 {
+                    Console.WriteLine($"[TTS] Azure synthesis OK, playing {tmpFile}");
                     await PlayAudioFileAsync(tmpFile);
                     return;
                 }

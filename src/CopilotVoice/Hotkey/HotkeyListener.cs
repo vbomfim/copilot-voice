@@ -73,17 +73,27 @@ public class HotkeyListener : IDisposable
         
         _pressedKeys.Add(e.Data.KeyCode);
         
-        if (!_isActive && _targetKeys.IsSubsetOf(_pressedKeys))
+        if (_targetKeys.IsSubsetOf(_pressedKeys))
         {
-            _isActive = true;
-            try { OnPushToTalkStart?.Invoke(); }
-            catch (Exception ex) { OnError?.Invoke($"Start handler error: {ex.Message}"); }
+            // Suppress the key so it doesn't leak to the terminal
+            e.SuppressEvent = true;
+            
+            if (!_isActive)
+            {
+                _isActive = true;
+                try { OnPushToTalkStart?.Invoke(); }
+                catch (Exception ex) { OnError?.Invoke($"Start handler error: {ex.Message}"); }
+            }
         }
     }
 
     private void OnKeyReleased(object? sender, KeyboardHookEventArgs e)
     {
         if (!_targetKeys.Contains(e.Data.KeyCode)) return;
+        
+        // Suppress release too while hotkey was active
+        if (_isActive)
+            e.SuppressEvent = true;
         
         _pressedKeys.Remove(e.Data.KeyCode);
         

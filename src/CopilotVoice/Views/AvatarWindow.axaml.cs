@@ -1,4 +1,6 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Threading;
 using CopilotVoice.UI.Avatar;
 
@@ -7,6 +9,8 @@ namespace CopilotVoice.Views;
 public partial class AvatarWindow : Window
 {
     private AppServices? _services;
+    private bool _isDragging;
+    private PixelPoint _dragStart;
 
     public AvatarWindow()
     {
@@ -23,9 +27,38 @@ public partial class AvatarWindow : Window
             if (screen != null)
             {
                 var workArea = screen.WorkingArea;
-                Position = new Avalonia.PixelPoint(
+                Position = new PixelPoint(
                     (int)(workArea.Right - Width - 20),
                     (int)(workArea.Bottom - Height - 20));
+            }
+        };
+
+        // Drag to move (since no title bar)
+        PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            {
+                _isDragging = true;
+                _dragStart = e.GetPosition(this) is { } p
+                    ? new PixelPoint((int)p.X, (int)p.Y) : default;
+                e.Pointer.Capture(this);
+            }
+        };
+        PointerMoved += (_, e) =>
+        {
+            if (_isDragging)
+            {
+                var pos = e.GetPosition(this);
+                var delta = new PixelPoint((int)pos.X, (int)pos.Y) - _dragStart;
+                Position = new PixelPoint(Position.X + delta.X, Position.Y + delta.Y);
+            }
+        };
+        PointerReleased += (_, e) =>
+        {
+            if (_isDragging)
+            {
+                _isDragging = false;
+                e.Pointer.Capture(null);
             }
         };
     }
@@ -106,7 +139,75 @@ public partial class AvatarWindow : Window
         services.OnLog += msg =>
             Dispatcher.UIThread.Post(() => Console.WriteLine($"[UI] {msg}"));
 
+        services.OnWindowControl += async (action, x, y, position) =>
+        {
+            var tcs = new TaskCompletionSource<string>();
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    var result = action switch
+                    {
+                        "show" => DoShow(),
+                        "hide" => DoHide(),
+                        "toggle" => IsVisible ? DoHide() : DoShow(),
+                        "topmost_on" => DoTopmost(true),
+                        "topmost_off" => DoTopmost(false),
+                        "move" => DoMove(x, y, position),
+                        _ => $"Unknown action: {action}"
+                    };
+                    tcs.TrySetResult(result);
+                }
+                catch (Exception ex) { tcs.TrySetResult($"Error: {ex.Message}"); }
+            });
+            return await tcs.Task;
+        };
+
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
+    }
+
+    private string DoShow() { Show(); return "Window shown"; }
+    private string DoHide() { Hide(); return "Window hidden"; }
+    private string DoTopmost(bool on)
+    {
+        Topmost = on;
+        PinButton.Content = on ? "📌" : "📍";
+        return $"Topmost: {on}";
+    }
+    private void OnPinClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        DoTopmost(!Topmost);
+    }
+    private void OnHideClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        Hide();
+    }
+    private string DoMove(int? x, int? y, string? position)
+    {
+        if (position != null)
+        {
+            var screen = Screens.Primary;
+            if (screen == null) return "No screen";
+            var wa = screen.WorkingArea;
+            var (px, py) = position switch
+            {
+                "top-left" => (wa.X + 20, wa.Y + 20),
+                "top-right" => ((int)(wa.Right - Width - 20), wa.Y + 20),
+                "bottom-left" => (wa.X + 20, (int)(wa.Bottom - Height - 20)),
+                "bottom-right" => ((int)(wa.Right - Width - 20), (int)(wa.Bottom - Height - 20)),
+                "center" => ((int)(wa.X + (wa.Width - Width) / 2), (int)(wa.Y + (wa.Height - Height) / 2)),
+                _ => (-1, -1)
+            };
+            if (px < 0) return $"Unknown position: {position}";
+            Position = new PixelPoint(px, py);
+            return $"Moved to {position} ({px},{py})";
+        }
+        if (x != null && y != null)
+        {
+            Position = new PixelPoint(x.Value, y.Value);
+            return $"Moved to ({x},{y})";
+        }
+        return "Specify x,y or position";
     }
 
     private void UpdateFace(AvatarExpression expression)

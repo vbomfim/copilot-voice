@@ -125,6 +125,23 @@ public static class McpToolDefinitions
                 required = new[] { "message" },
             },
         },
+        new
+        {
+            name = "copilot-voice-window",
+            description = "Control the Copilot Voice avatar window. Show, hide, move, or toggle always-on-top.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["action"] = new { type = "string", description = "Action: show, hide, toggle, topmost_on, topmost_off, move" },
+                    ["x"] = new { type = "number", description = "X position (only for move action)" },
+                    ["y"] = new { type = "number", description = "Y position (only for move action)" },
+                    ["position"] = new { type = "string", description = "Named position: top-left, top-right, bottom-left, bottom-right, center (only for move action)" },
+                },
+                required = new[] { "action" },
+            },
+        },
     };
 }
 
@@ -138,6 +155,7 @@ public static class McpToolHandler
     public static Func<int, string?, Task<string>>? OnListen { get; set; }
     public static Action<string>? OnSetAvatar { get; set; }
     public static Func<string, bool, Task>? OnNotify { get; set; }
+    public static Func<string, int?, int?, string?, Task<string>>? OnWindowControl { get; set; }
 
     public static async Task<object> HandleAsync(string toolName, JsonElement? args)
     {
@@ -147,6 +165,7 @@ public static class McpToolHandler
             "listen" or "copilot-voice-listen" => await HandleListenAsync(args),
             "set_avatar" or "copilot-voice-set_avatar" => HandleSetAvatar(args),
             "notify" or "copilot-voice-notify" => await HandleNotifyAsync(args),
+            "copilot-voice-window" => await HandleWindowAsync(args),
             _ => new { content = new[] { new { type = "text", text = $"Unknown tool: {toolName}" } }, isError = true },
         };
     }
@@ -192,5 +211,21 @@ public static class McpToolHandler
             await OnNotify(message, speak);
 
         return new { content = new[] { new { type = "text", text = $"Notified: \"{message}\"" } } };
+    }
+
+    private static async Task<object> HandleWindowAsync(JsonElement? args)
+    {
+        var action = args?.GetProperty("action").GetString() ?? "";
+        int? x = args?.TryGetProperty("x", out var xv) == true ? xv.GetInt32() : null;
+        int? y = args?.TryGetProperty("y", out var yv) == true ? yv.GetInt32() : null;
+        var position = args?.TryGetProperty("position", out var pv) == true ? pv.GetString() : null;
+
+        if (OnWindowControl != null)
+        {
+            var result = await OnWindowControl(action, x, y, position);
+            return new { content = new[] { new { type = "text", text = result } } };
+        }
+
+        return new { content = new[] { new { type = "text", text = "Window control not available" } }, isError = true };
     }
 }
