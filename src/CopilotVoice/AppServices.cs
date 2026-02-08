@@ -230,7 +230,7 @@ public sealed class AppServices : IDisposable
         }
         catch (Exception ex)
         {
-            Log($"Error: {ex.Message}");
+            Log($"Error: {ex}");
             OnStateChanged?.Invoke("Error");
         }
     }

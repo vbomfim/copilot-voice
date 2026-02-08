@@ -19,7 +19,7 @@ public class MacInputSender : IInputSender
         process.StartInfo = new ProcessStartInfo
         {
             FileName = "osascript",
-            Arguments = $"-e '{script}'",
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -27,6 +27,9 @@ public class MacInputSender : IInputSender
         };
 
         process.Start();
+        await process.StandardInput.WriteLineAsync(script);
+        process.StandardInput.Close();
+
         var stderr = await process.StandardError.ReadToEndAsync();
         await process.WaitForExitAsync();
 

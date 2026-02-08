@@ -8,6 +8,15 @@ class Program
     [STAThread]
     static void Main(string[] args)
     {
+        // Global exception handlers to prevent silent crashes
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Console.Error.WriteLine($"[CRASH] Unhandled: {e.ExceptionObject}");
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Console.Error.WriteLine($"[CRASH] Unobserved task: {e.Exception}");
+            e.SetObserved(); // Prevent process termination
+        };
+
         var cliArgs = CliArgs.Parse(args);
         if (cliArgs.ShowHelp) { CliArgs.PrintHelp(); return; }
 
@@ -27,7 +36,14 @@ class Program
         if (cliArgs.Region != null) Environment.SetEnvironmentVariable("AZURE_SPEECH_REGION", cliArgs.Region);
 
         // Launch Avalonia GUI app
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[CRASH] {ex}");
+        }
     }
 
     public static AppBuilder BuildAvaloniaApp()
