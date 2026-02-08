@@ -30,6 +30,7 @@ public sealed class AppServices : IDisposable
     private bool _isBusy;
     private bool _disposed;
     private bool _hasMicrophone = true;
+    private CancellationTokenSource? _micMonitorCts;
 
     // UI events
     public event Action<string>? OnStateChanged;
@@ -136,13 +137,14 @@ public sealed class AppServices : IDisposable
             }
         }
 
-        // Check microphone availability
+        // Check microphone availability and start polling
         _hasMicrophone = CheckMicrophoneAvailable();
         if (!_hasMicrophone)
         {
             Log("No microphone detected");
             OnMicAvailabilityChanged?.Invoke(false);
         }
+        StartMicMonitor();
 
         // STT
         _stt = new PushToTalkRecognizer(Config);
@@ -267,26 +269,10 @@ public sealed class AppServices : IDisposable
     {
         if (_isRecording || _isBusy || _stt == null) return;
 
-        // Re-check mic if previously unavailable
         if (!_hasMicrophone)
         {
-            _hasMicrophone = CheckMicrophoneAvailable();
-            if (_hasMicrophone)
-            {
-                Log("Microphone reconnected");
-                OnMicAvailabilityChanged?.Invoke(true);
-                OnSpeechBubble?.Invoke("🎤 Mic reconnected!", null);
-                OnStateChanged?.Invoke("Ready");
-                // Brief delay so user sees the feedback before recording starts
-                await Task.Delay(800);
-                OnSpeechBubble?.Invoke(null, null);
-            }
-            else
-            {
-                OnSpeechBubble?.Invoke("No microphone available. Please connect a mic and try again.", null);
-                OnStateChanged?.Invoke("Error");
-                return;
-            }
+            OnSpeechBubble?.Invoke("No microphone available. Please connect a mic.", null);
+            return;
         }
 
         if (!_recordLock.Wait(0)) return; // non-blocking trylock
@@ -555,6 +541,7 @@ public sealed class AppServices : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _micMonitorCts?.Cancel();
         _mcpSseTransport?.DisposeAsync().AsTask().Wait(2000);
         _hotkey?.Dispose();
         Animator.Dispose();
@@ -576,5 +563,27 @@ public sealed class AppServices : IDisposable
         {
             return false;
         }
+    }
+
+    private void StartMicMonitor()
+    {
+        _micMonitorCts = new CancellationTokenSource();
+        var ct = _micMonitorCts.Token;
+        _ = Task.Run(async () =>
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try { await Task.Delay(3000, ct); } catch { break; }
+                var available = CheckMicrophoneAvailable();
+                if (available != _hasMicrophone)
+                {
+                    _hasMicrophone = available;
+                    Log(available ? "Microphone connected" : "Microphone disconnected");
+                    OnMicAvailabilityChanged?.Invoke(available);
+                    if (available)
+                        OnStateChanged?.Invoke("Ready");
+                }
+            }
+        }, ct);
     }
 }
