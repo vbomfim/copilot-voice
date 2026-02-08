@@ -275,7 +275,11 @@ public sealed class AppServices : IDisposable
             {
                 Log("Microphone reconnected");
                 OnMicAvailabilityChanged?.Invoke(true);
-                OnSpeechBubble?.Invoke(null, null); // clear error balloon
+                OnSpeechBubble?.Invoke("🎤 Mic reconnected!", null);
+                OnStateChanged?.Invoke("Ready");
+                // Brief delay so user sees the feedback before recording starts
+                await Task.Delay(800);
+                OnSpeechBubble?.Invoke(null, null);
             }
             else
             {
