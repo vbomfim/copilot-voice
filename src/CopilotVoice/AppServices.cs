@@ -33,6 +33,7 @@ public sealed class AppServices : IDisposable
     // UI events
     public event Action<string>? OnStateChanged;
     public event Action<string?, string?>? OnSpeechBubble;
+    public event Action<string?>? OnTranscriptionUpdate; // user's voice (partial STT)
     public event Action<string?>? OnTargetSession;
     public event Action<string?, TimeSpan>? OnTimerTick;
     public event Action<List<CopilotSession>>? OnSessionsRefreshed;
@@ -125,7 +126,7 @@ public sealed class AppServices : IDisposable
         _stt.OnPartialResult += text =>
         {
             Animator.RecordInteraction();
-            OnSpeechBubble?.Invoke(text, null);
+            OnTranscriptionUpdate?.Invoke(text);
         };
         _stt.OnError += err => Log($"STT error: {err}");
         _stt.OnLog += msg => Log(msg);
@@ -144,9 +145,15 @@ public sealed class AppServices : IDisposable
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
+            _messageListener.OnSpeakReceived += async msg =>
+            {
+                OnSpeechBubble?.Invoke(msg.Text, null);
+                await SayStaticAsync(msg.Text);
+                OnSpeechBubble?.Invoke(null, null);
+            };
             _messageListener.OnBubbleReceived += msg =>
             {
-                OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
+                OnSpeechBubble?.Invoke(msg.Text, null);
             };
             _messageListener.Start();
             Log("Message listener: localhost:7701");
@@ -198,7 +205,7 @@ public sealed class AppServices : IDisposable
             };
             Mcp.McpToolHandler.OnNotify = async (message, speak) =>
             {
-                OnSpeechBubble?.Invoke(message, "notify");
+                OnSpeechBubble?.Invoke(message, null);
                 if (speak) await SayStaticAsync(message);
             };
             Mcp.McpToolHandler.OnSetAvatar = expr =>
@@ -221,17 +228,21 @@ public sealed class AppServices : IDisposable
         Log("Ready!");
     }
 
+    private readonly SemaphoreSlim _recordLock = new(1, 1);
+
     private async void OnHotkeyDown()
     {
         if (_isRecording || _isBusy || _stt == null) return;
-        _isRecording = true;
-
-        Log("Hotkey pressed — starting recording");
-        OnStateChanged?.Invoke("Recording");
-        Animator.RecordInteraction();
-
+        if (!_recordLock.Wait(0)) return; // non-blocking trylock
         try
         {
+            if (_isRecording) return; // double-check under lock
+            _isRecording = true;
+
+            Log("Hotkey pressed — starting recording");
+            OnStateChanged?.Invoke("Recording");
+            Animator.RecordInteraction();
+
             await _stt.StartRecordingAsync();
         }
         catch (Exception ex)
@@ -239,6 +250,10 @@ public sealed class AppServices : IDisposable
             Log($"Mic error: {ex.Message}");
             OnStateChanged?.Invoke("Error");
             _isRecording = false;
+        }
+        finally
+        {
+            _recordLock.Release();
         }
     }
 
@@ -295,6 +310,12 @@ public sealed class AppServices : IDisposable
             }
 
             OnStateChanged?.Invoke("Ready");
+            // Clear transcription after a short delay
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(TimeSpan.FromSeconds(3));
+                OnTranscriptionUpdate?.Invoke(null);
+            });
         }
         catch (Exception ex)
         {

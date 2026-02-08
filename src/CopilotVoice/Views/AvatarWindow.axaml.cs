@@ -35,48 +35,76 @@ public partial class AvatarWindow : Window
         _services = services;
 
         services.Animator.OnExpressionChanged += expr =>
-            Dispatcher.UIThread.Post(() => UpdateFace(expr));
+            Dispatcher.UIThread.Post(() => { try { UpdateFace(expr); } catch (Exception ex) { Console.WriteLine($"[UI] Face error: {ex.Message}"); } });
 
         services.OnStateChanged += state =>
-            Dispatcher.UIThread.Post(() => UpdateStatus(state));
+            Dispatcher.UIThread.Post(() => { try { UpdateStatus(state); } catch (Exception ex) { Console.WriteLine($"[UI] Status error: {ex.Message}"); } });
 
         services.OnSpeechBubble += (text, label) =>
             Dispatcher.UIThread.Post(() =>
             {
-                if (string.IsNullOrEmpty(text))
+                try
                 {
-                    // Hide balloon when text is cleared
-                    BalloonPanel.IsVisible = false;
-                    SpeechBubble.Text = "";
+                    if (string.IsNullOrEmpty(text))
+                    {
+                        BalloonPanel.IsVisible = false;
+                        SpeechBubble.Text = "";
+                    }
+                    else
+                    {
+                        SpeechBubble.Text = text;
+                        BalloonPanel.IsVisible = true;
+                    }
+                    if (!string.IsNullOrEmpty(label))
+                        SessionLabel.Text = $"\U0001f4c2 {label}";
                 }
-                else
-                {
-                    // Show balloon with text
-                    SpeechBubble.Text = text;
-                    BalloonPanel.IsVisible = true;
-                }
-                if (!string.IsNullOrEmpty(label))
-                    SessionLabel.Text = $"\U0001f4c2 {label}";
+                catch (Exception ex) { Console.WriteLine($"[UI] Bubble error: {ex.Message}"); }
             });
 
         services.OnTargetSession += label =>
             Dispatcher.UIThread.Post(() =>
-                SessionLabel.Text = $"\U0001f4c2 {label ?? "no session"}");
+            {
+                try { SessionLabel.Text = $"\U0001f4c2 {label ?? "no session"}"; }
+                catch (Exception ex) { Console.WriteLine($"[UI] Session error: {ex.Message}"); }
+            });
+
+        services.OnTranscriptionUpdate += text =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    if (string.IsNullOrEmpty(text))
+                    {
+                        TranscriptionPanel.IsVisible = false;
+                        TranscriptionText.Text = "";
+                    }
+                    else
+                    {
+                        TranscriptionText.Text = text;
+                        TranscriptionPanel.IsVisible = true;
+                    }
+                }
+                catch (Exception ex) { Console.WriteLine($"[UI] Transcription error: {ex.Message}"); }
+            });
 
         services.OnTimerTick += (phase, remaining) =>
             Dispatcher.UIThread.Post(() =>
             {
-                if (phase == null)
-                    TimerLabel.Text = "";
-                else
+                try
                 {
-                    var icon = phase == "Work" ? "\U0001f528" : "\u2615";
-                    TimerLabel.Text = $"{icon} {phase} {remaining:mm\\:ss}";
+                    if (phase == null)
+                        TimerLabel.Text = "";
+                    else
+                    {
+                        var icon = phase == "Work" ? "\U0001f528" : "\u2615";
+                        TimerLabel.Text = $"{icon} {phase} {remaining:mm\\:ss}";
+                    }
                 }
+                catch (Exception ex) { Console.WriteLine($"[UI] Timer error: {ex.Message}"); }
             });
 
         services.OnLog += msg =>
-            Dispatcher.UIThread.Post(() => System.Console.WriteLine($"[UI] {msg}"));
+            Dispatcher.UIThread.Post(() => Console.WriteLine($"[UI] {msg}"));
 
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
     }

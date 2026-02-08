@@ -3,7 +3,7 @@
         xmlns:views="using:CopilotVoice.Views"
         x:Class="CopilotVoice.Views.AvatarWindow"
         Title="Copilot Voice"
-        Width="280" Height="400"
+        Width="280" SizeToContent="Height"
         CanResize="False"
         SystemDecorations="None"
         WindowStartupLocation="Manual"
@@ -14,7 +14,7 @@
 
     <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#3B3B5C" BorderThickness="1"
             ClipToBounds="True">
-        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto">
 
             <!-- Header (replaces title bar) -->
             <Border Grid.Row="0" Padding="12,8" Background="#2D2D44"
@@ -28,7 +28,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- Speech Balloon (above avatar) -->
+            <!-- Speech Balloon (above avatar) — Copilot's voice only -->
             <StackPanel Grid.Row="1" x:Name="BalloonPanel" Margin="14,8,14,0"
                         IsVisible="False">
                 <Border Background="#45475A" CornerRadius="10" Padding="12,8">
@@ -47,14 +47,22 @@
                 <views:PixelAvatarControl x:Name="AvatarPixel"/>
             </Border>
 
+            <!-- Transcription (user's voice) -->
+            <Border Grid.Row="3" x:Name="TranscriptionPanel" Padding="8,4" Margin="10,0"
+                    IsVisible="False">
+                <TextBlock x:Name="TranscriptionText" Text=""
+                           FontSize="10" Foreground="#A6ADC8" TextWrapping="Wrap"
+                           MaxHeight="32" HorizontalAlignment="Center" FontStyle="Italic"/>
+            </Border>
+
             <!-- Session info -->
-            <Border Grid.Row="3" Padding="10,4" Margin="10,0">
+            <Border Grid.Row="4" Padding="10,4" Margin="10,0">
                 <TextBlock x:Name="SessionLabel" Text="📂 waiting..."
                            FontSize="10" Foreground="#6C7086" HorizontalAlignment="Center"/>
             </Border>
 
             <!-- Status Bar -->
-            <Border Grid.Row="4" Padding="10,6" Background="#2D2D44"
+            <Border Grid.Row="5" Padding="10,6" Background="#2D2D44"
                     CornerRadius="0,0,12,12">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBlock x:Name="HotkeyLabel" Text="⌨️ Ctrl+Space"

@@ -33,20 +33,43 @@ public class App : Application
             _avatarWindow.SetServices(_services);
             _avatarWindow.Show();
 
+            WindowIcon? trayIconImage = null;
+            try
+            {
+                var iconPath = System.IO.Path.Combine(
+                    AppContext.BaseDirectory, "Assets", "tray-icon.png");
+                if (!System.IO.File.Exists(iconPath))
+                    iconPath = System.IO.Path.Combine(
+                        System.IO.Path.GetDirectoryName(
+                            System.Reflection.Assembly.GetExecutingAssembly().Location)!,
+                        "Assets", "tray-icon.png");
+                Console.WriteLine($"[copilot-voice] Tray icon path: {iconPath} (exists: {System.IO.File.Exists(iconPath)})");
+                if (System.IO.File.Exists(iconPath))
+                    trayIconImage = new WindowIcon(iconPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[copilot-voice] Tray icon load error: {ex.Message}");
+            }
+
             var trayIcon = new TrayIcon
             {
                 ToolTipText = "Copilot Voice",
                 IsVisible = true,
                 Menu = BuildTrayMenu(desktop)
             };
-
-            trayIcon.Clicked += (_, _) =>
+            if (trayIconImage != null)
             {
-                if (_avatarWindow.IsVisible)
-                    _avatarWindow.Hide();
-                else
-                    _avatarWindow.Show();
-            };
+                trayIcon.Icon = trayIconImage;
+                Console.WriteLine("[copilot-voice] Tray icon set");
+            }
+            else
+            {
+                Console.WriteLine("[copilot-voice] Tray icon NOT set (null)");
+            }
+
+            // On macOS, left-click on tray shows the menu.
+            // Show/Hide is handled via menu items instead.
 
             _services.OnStateChanged += state =>
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -147,13 +170,25 @@ public class App : Application
         menu.Add(new NativeMenuItemSeparator());
 
         // Actions
-        var showItem = new NativeMenuItem("👁️  Show Avatar");
-        showItem.Click += (_, _) => _avatarWindow?.Show();
-        menu.Add(showItem);
-
-        var hideItem = new NativeMenuItem("🙈 Hide Avatar");
-        hideItem.Click += (_, _) => _avatarWindow?.Hide();
-        menu.Add(hideItem);
+        var toggleAvatarItem = new NativeMenuItem("👁️  Toggle Avatar");
+        toggleAvatarItem.Click += (_, _) =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    if (_avatarWindow?.IsVisible == true)
+                        _avatarWindow.Hide();
+                    else
+                        _avatarWindow?.Show();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[copilot-voice] Toggle error: {ex.Message}");
+                }
+            });
+        };
+        menu.Add(toggleAvatarItem);
 
         var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
         refreshItem.Click += (_, _) => _services?.RefreshSessions();

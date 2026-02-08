@@ -24,6 +24,24 @@ class Program
             e.SetObserved();
         };
 
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            File.AppendAllText("/tmp/copilot-voice-crash.log",
+                $"{DateTime.Now}: [EXIT] Process exiting\n");
+        };
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            File.AppendAllText("/tmp/copilot-voice-crash.log",
+                $"{DateTime.Now}: [SIGNAL] Ctrl+C / SIGINT received\n");
+        };
+
+        System.Runtime.Loader.AssemblyLoadContext.Default.Unloading += _ =>
+        {
+            File.AppendAllText("/tmp/copilot-voice-crash.log",
+                $"{DateTime.Now}: [UNLOAD] Assembly unloading (SIGTERM?)\n");
+        };
+
         var cliArgs = CliArgs.Parse(args);
         if (cliArgs.ShowHelp) { CliArgs.PrintHelp(); return; }
 

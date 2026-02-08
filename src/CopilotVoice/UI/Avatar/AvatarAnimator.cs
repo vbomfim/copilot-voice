@@ -77,20 +77,28 @@ public sealed class AvatarAnimator : IDisposable
 
     private async Task RunIdleLoopAsync(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        try
         {
-            await Task.Delay(BlinkInterval, ct);
-            if (ct.IsCancellationRequested) break;
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(BlinkInterval, ct);
+                if (ct.IsCancellationRequested) break;
 
-            if (DateTime.UtcNow - _lastInteraction > YawnIdleThreshold)
-            {
-                await YawnAsync(ct);
-                _lastInteraction = DateTime.UtcNow; // reset after yawn
+                if (DateTime.UtcNow - _lastInteraction > YawnIdleThreshold)
+                {
+                    await YawnAsync(ct);
+                    _lastInteraction = DateTime.UtcNow; // reset after yawn
+                }
+                else
+                {
+                    await BlinkAsync(ct);
+                }
             }
-            else
-            {
-                await BlinkAsync(ct);
-            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Animator] Idle loop error: {ex.Message}");
         }
     }
 }

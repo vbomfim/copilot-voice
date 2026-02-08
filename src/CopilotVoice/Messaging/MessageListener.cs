@@ -106,6 +106,9 @@ public class MessageListener : IDisposable
         }
     }
 
+    /// <summary>Called when /speak completes TTS. Set by AppServices.</summary>
+    public event Func<InboundMessage, Task>? OnSpeakReceived;
+
     private async Task HandleSpeak(HttpListenerRequest request, HttpListenerResponse response)
     {
         string body;
@@ -134,8 +137,24 @@ public class MessageListener : IDisposable
         if (message.Timestamp == default)
             message.Timestamp = DateTime.UtcNow;
 
-        _queue.Enqueue(message);
-        await WriteResponse(response, 202, """{"status":"queued"}""");
+        // Synchronous: wait for TTS to complete before responding
+        if (OnSpeakReceived != null)
+        {
+            try
+            {
+                await OnSpeakReceived(message);
+                await WriteResponse(response, 200, """{"status":"ok"}""");
+            }
+            catch (Exception ex)
+            {
+                await WriteResponse(response, 500, $"{{\"error\":\"{ex.Message}\"}}");
+            }
+        }
+        else
+        {
+            _queue.Enqueue(message);
+            await WriteResponse(response, 202, """{"status":"queued"}""");
+        }
     }
 
     private async Task HandleBubble(HttpListenerRequest request, HttpListenerResponse response)

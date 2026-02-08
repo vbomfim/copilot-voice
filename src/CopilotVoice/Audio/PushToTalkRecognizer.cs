@@ -115,20 +115,51 @@ public class PushToTalkRecognizer : IDisposable
         OnLog?.Invoke("STT: initialized (reusable)");
     }
 
+    /// <summary>Reset the recognizer after an error to avoid native SDK abort.</summary>
+    private void ResetRecognizer()
+    {
+        _isRecording = false;
+        _initialized = false;
+        try { _recognizer?.Dispose(); } catch { }
+        try { _audioConfig?.Dispose(); } catch { }
+        _recognizer = null;
+        _audioConfig = null;
+        OnLog?.Invoke("STT: recognizer reset after error");
+    }
+
+    private bool _isRecording;
+
     public async Task StartRecordingAsync()
     {
+        if (_isRecording)
+        {
+            OnLog?.Invoke("STT: already recording, skipping start");
+            return;
+        }
+
         Interlocked.Increment(ref _sessionId);
         lock (_segmentsLock) { _recognizedSegments.Clear(); }
         _sessionStoppedTcs = new TaskCompletionSource();
         EnsureInitialized();
 
-        await _recognizer!.StartContinuousRecognitionAsync();
-        OnLog?.Invoke("STT: recording started");
+        try
+        {
+            await _recognizer!.StartContinuousRecognitionAsync();
+            _isRecording = true;
+            OnLog?.Invoke("STT: recording started");
+        }
+        catch (Exception ex)
+        {
+            OnLog?.Invoke($"STT: start failed: {ex.Message}");
+            ResetRecognizer();
+            throw;
+        }
     }
 
     public async Task<string> StopRecordingAndTranscribeAsync()
     {
-        if (_recognizer == null) return string.Empty;
+        if (_recognizer == null || !_isRecording) return string.Empty;
+        _isRecording = false;
 
         OnLog?.Invoke("STT: stopping recognition...");
 
