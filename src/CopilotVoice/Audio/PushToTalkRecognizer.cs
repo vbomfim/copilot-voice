@@ -35,11 +35,40 @@ public class PushToTalkRecognizer : IDisposable
         var (key, region) = _authProvider.Resolve(_config);
         var speechConfig = SpeechConfig.FromSubscription(key, region);
         speechConfig.SpeechRecognitionLanguage = _config.Language;
+        // Request detailed results for better accuracy
+        speechConfig.OutputFormat = OutputFormat.Detailed;
+        // Enable profanity removal to avoid weird substitutions
+        speechConfig.SetProfanity(ProfanityOption.Removed);
 
         OnLog?.Invoke($"STT: connecting to {region}, lang={_config.Language}");
 
         _audioConfig = AudioConfig.FromDefaultMicrophoneInput();
         _recognizer = new SpeechRecognizer(speechConfig, _audioConfig);
+
+        // Add phrase hints for common terms to improve accuracy
+        var phraseList = PhraseListGrammar.FromRecognizer(_recognizer);
+        phraseList.AddPhrase("Copilot");
+        phraseList.AddPhrase("CLI");
+        phraseList.AddPhrase("MCP");
+        phraseList.AddPhrase("GitHub");
+        phraseList.AddPhrase("Ghostty");
+        phraseList.AddPhrase("SSE");
+        phraseList.AddPhrase("async");
+        phraseList.AddPhrase("await");
+        phraseList.AddPhrase("dotnet");
+        phraseList.AddPhrase("npm");
+        phraseList.AddPhrase("TypeScript");
+        phraseList.AddPhrase("JavaScript");
+        phraseList.AddPhrase("API");
+        phraseList.AddPhrase("JSON");
+        phraseList.AddPhrase("codebase");
+        phraseList.AddPhrase("repository");
+        phraseList.AddPhrase("commit");
+        phraseList.AddPhrase("push");
+        phraseList.AddPhrase("pull request");
+        phraseList.AddPhrase("terminal");
+        phraseList.AddPhrase("tray app");
+        phraseList.AddPhrase("hotkey");
 
         _recognizer.Recognizing += (s, e) =>
         {
