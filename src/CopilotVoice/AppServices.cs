@@ -114,6 +114,7 @@ public sealed class AppServices : IDisposable
                 _tts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
                 _tts.OnError += err => Log($"TTS error: {err}");
                 Log($"TTS: {Config.VoiceName}");
+                _voiceName = Config.VoiceName;
             }
             catch (Exception ex)
             {
@@ -356,6 +357,8 @@ public sealed class AppServices : IDisposable
         OnLog?.Invoke(msg);
     }
 
+    private static string _voiceName = "en-US-AndrewMultilingualNeural";
+
     public static async Task SayStaticAsync(string text)
     {
         var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.wav");
@@ -368,7 +371,7 @@ public sealed class AppServices : IDisposable
             if (!string.IsNullOrEmpty(key))
             {
                 var speechConfig = Microsoft.CognitiveServices.Speech.SpeechConfig.FromSubscription(key, region);
-                speechConfig.SpeechSynthesisVoiceName = "en-US-JennyNeural";
+                speechConfig.SpeechSynthesisVoiceName = _voiceName;
                 using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromWavFileOutput(tmpFile);
                 using var synthesizer = new Microsoft.CognitiveServices.Speech.SpeechSynthesizer(speechConfig, audioConfig);
                 var result = await synthesizer.SpeakTextAsync(text);

@@ -32,9 +32,12 @@
             <StackPanel Grid.Row="1" x:Name="BalloonPanel" Margin="14,8,14,0"
                         IsVisible="False">
                 <Border Background="#45475A" CornerRadius="10" Padding="12,8">
-                    <TextBlock x:Name="SpeechBubble" Text=""
-                               FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"
-                               MaxHeight="60" TextAlignment="Center"/>
+                    <ScrollViewer MaxHeight="100" HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="SpeechBubble" Text=""
+                                   FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"
+                                   TextAlignment="Left"/>
+                    </ScrollViewer>
                 </Border>
                 <!-- Triangle pointer pointing down to avatar -->
                 <Canvas Height="10" HorizontalAlignment="Center" Width="20">
