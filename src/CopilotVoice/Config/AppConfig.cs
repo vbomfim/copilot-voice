@@ -12,7 +12,7 @@ public class AppConfig
     public string? AzureResourceName { get; set; }
 
     // Push-to-talk
-    public string Hotkey { get; set; } = "Ctrl+Shift+V";
+    public string Hotkey { get; set; } = "Alt+Space";
     public string Language { get; set; } = "en-US";
 
     // Session

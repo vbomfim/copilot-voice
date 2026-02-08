@@ -51,11 +51,16 @@ public class MacInputSender : IInputSender
         // For apps with AppleScript support (Terminal.app, iTerm2),
         // find the copilot window. For others (Ghostty, Alacritty),
         // just activate the app and paste.
-        return $@"set the clipboard to ""{escaped}""
+        return $@"-- Save current clipboard
+set oldClip to the clipboard
+set the clipboard to ""{escaped}""
 tell application ""{app}"" to activate
 delay 0.15
 tell application ""System Events""
     keystroke ""v"" using command down{enterLine}
-end tell";
+end tell
+-- Restore clipboard after brief delay
+delay 0.1
+set the clipboard to oldClip";
     }
 }
