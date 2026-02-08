@@ -214,6 +214,17 @@ public sealed class AppServices : IDisposable
 
             Log($"Transcribed: {text}");
 
+            // Always copy to clipboard
+            try
+            {
+                await CopyToClipboardAsync(text);
+                Log("Copied to clipboard");
+            }
+            catch (Exception clipEx)
+            {
+                Log($"Clipboard failed: {clipEx.Message}");
+            }
+
             // Send to target session
             var target = _sessionManager.GetTargetSession();
             if (target != null && _inputSender != null)
@@ -222,14 +233,28 @@ public sealed class AppServices : IDisposable
                 await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
                 Log($"Sent to {target.Label}");
                 OnSpeechBubble?.Invoke(text, target.Label);
-                await Task.Delay(2000);
-                OnSpeechBubble?.Invoke(null, null);
             }
             else
             {
-                Log($"No target session (target={target?.Label}, sender={_inputSender?.GetType().Name})");
+                Log("No target session — text is in clipboard (Cmd+V to paste)");
+                OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
             }
 
+            // Brief TTS confirmation
+            if (_tts != null)
+            {
+                try
+                {
+                    await _tts.SpeakAsync("Got it.");
+                }
+                catch (Exception ttsEx)
+                {
+                    Log($"TTS confirmation failed: {ttsEx.Message}");
+                }
+            }
+
+            await Task.Delay(2000);
+            OnSpeechBubble?.Invoke(null, null);
             OnStateChanged?.Invoke("Ready");
         }
         catch (Exception ex)
@@ -243,6 +268,41 @@ public sealed class AppServices : IDisposable
     {
         Console.Error.WriteLine($"[copilot-voice] {msg}");
         OnLog?.Invoke(msg);
+    }
+
+    private static async Task CopyToClipboardAsync(string text)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "pbcopy",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            process.Start();
+            await process.StandardInput.WriteAsync(text);
+            process.StandardInput.Close();
+            await process.WaitForExitAsync();
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "xclip",
+                Arguments = "-selection clipboard",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            process.Start();
+            await process.StandardInput.WriteAsync(text);
+            process.StandardInput.Close();
+            await process.WaitForExitAsync();
+        }
     }
 
     public void Dispose()

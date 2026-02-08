@@ -25,13 +25,13 @@
         <!-- Avatar Face -->
         <Border Grid.Row="1" Padding="8" HorizontalAlignment="Center" VerticalAlignment="Center">
             <TextBlock x:Name="AvatarFace"
-                       FontFamily="Cascadia Mono, Menlo, Monaco, monospace"
-                       FontSize="20"
+                       FontFamily="Menlo, Cascadia Mono, Courier New, monospace"
+                       FontSize="16"
                        Foreground="#CDD6F4"
                        TextAlignment="Center"
                        HorizontalAlignment="Center"
-                       LineHeight="26"
-                       Text="  ◠◠◠  &#10; ┌─────┐&#10; │ ◕ ◕ │&#10; │  ‿  │&#10; └─────┘"/>
+                       LineHeight="20"
+                       Text="    ___    &#10;   |___|   &#10;  /     \  &#10; | O   O | &#10; |   _   | &#10; |  \_/  | &#10;  \_____/  &#10;   || ||   "/>
         </Border>
 
         <!-- Speech Bubble / Session -->
