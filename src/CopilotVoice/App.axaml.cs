@@ -10,6 +10,11 @@ public class App : Application
 {
     private AvatarWindow? _avatarWindow;
     private AppServices? _services;
+    private NativeMenuItem? _lastTranscriptionItem;
+    private NativeMenuItem? _hotkeyItem;
+    private NativeMenuItem? _pomodoroItem;
+    private NativeMenuItem? _sessionsItem;
+    private NativeMenuItem? _lockToggleItem;
 
     public override void Initialize()
     {
@@ -20,17 +25,14 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // No main window — tray icon app
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
             _services = new AppServices();
 
-            // Create and show the avatar window
             _avatarWindow = new AvatarWindow();
             _avatarWindow.SetServices(_services);
             _avatarWindow.Show();
 
-            // Setup tray icon
             var trayIcon = new TrayIcon
             {
                 ToolTipText = "Copilot Voice",
@@ -38,7 +40,6 @@ public class App : Application
                 Menu = BuildTrayMenu(desktop)
             };
 
-            // Set tray icon text (emoji-style isn't supported, use a simple icon)
             trayIcon.Clicked += (_, _) =>
             {
                 if (_avatarWindow.IsVisible)
@@ -47,12 +48,32 @@ public class App : Application
                     _avatarWindow.Show();
             };
 
-            // Update tray tooltip based on state
             _services.OnStateChanged += state =>
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     trayIcon.ToolTipText = $"Copilot Voice — {state}");
 
-            // Start all services
+            _services.OnSpeechBubble += (text, _) =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_lastTranscriptionItem != null && !string.IsNullOrEmpty(text))
+                        _lastTranscriptionItem.Header = $"🔊 \"{Truncate(text, 30)}\"";
+                });
+
+            _services.OnTimerTick += (phase, remaining) =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_pomodoroItem != null)
+                    {
+                        if (phase == null)
+                            _pomodoroItem.Header = "🍅 Pomodoro: Off";
+                        else
+                        {
+                            var icon = phase == "Work" ? "🔨" : "☕";
+                            _pomodoroItem.Header = $"🍅 {icon} {remaining:mm\\:ss} {phase.ToUpper()}";
+                        }
+                    }
+                });
+
             _ = _services.StartAsync();
         }
 
@@ -63,37 +84,84 @@ public class App : Application
     {
         var menu = new NativeMenu();
 
-        var showItem = new NativeMenuItem("Show Avatar");
-        showItem.Click += (_, _) => _avatarWindow?.Show();
-        menu.Add(showItem);
-
-        var hideItem = new NativeMenuItem("Hide Avatar");
-        hideItem.Click += (_, _) => _avatarWindow?.Hide();
-        menu.Add(hideItem);
-
+        // Title
+        var titleItem = new NativeMenuItem("🎤🤖 Copilot Voice") { IsEnabled = false };
+        menu.Add(titleItem);
         menu.Add(new NativeMenuItemSeparator());
 
+        // Sessions section
         if (_services != null)
         {
-            var sessionsItem = new NativeMenuItem("Sessions") { Menu = new NativeMenu() };
+            var sessionsHeader = new NativeMenuItem("Active Sessions:") { IsEnabled = false };
+            menu.Add(sessionsHeader);
+
+            _lockToggleItem = new NativeMenuItem("🔓 Auto-select");
+            _lockToggleItem.Click += (_, _) =>
+            {
+                _services?.ToggleSessionLock();
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_lockToggleItem != null)
+                        _lockToggleItem.Header = _services?.IsSessionLocked == true
+                            ? "🔒 Locked" : "🔓 Auto-select";
+                });
+            };
+            menu.Add(_lockToggleItem);
+
+            _sessionsItem = new NativeMenuItem("Sessions") { Menu = new NativeMenu() };
             _services.OnSessionsRefreshed += sessions =>
             {
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
-                    sessionsItem.Menu!.Items.Clear();
+                    _sessionsItem.Menu!.Items.Clear();
+                    if (sessions.Count == 0)
+                    {
+                        _sessionsItem.Menu.Items.Add(
+                            new NativeMenuItem("No sessions found") { IsEnabled = false });
+                        return;
+                    }
                     foreach (var s in sessions)
                     {
-                        var item = new NativeMenuItem(
-                            $"{(s.IsFocused ? "● " : "○ ")}{s.Label}");
-                        sessionsItem.Menu.Items.Add(item);
+                        var prefix = s.IsFocused ? "● " : "○ ";
+                        var item = new NativeMenuItem($"{prefix}{s.Label}");
+                        var session = s;
+                        item.Click += (_, _) => _services?.SelectSession(session);
+                        _sessionsItem.Menu.Items.Add(item);
                     }
                 });
             };
-            menu.Add(sessionsItem);
+            menu.Add(_sessionsItem);
             menu.Add(new NativeMenuItemSeparator());
         }
 
-        var quitItem = new NativeMenuItem("Quit");
+        // Info section
+        _hotkeyItem = new NativeMenuItem($"⌨️  Hotkey: {_services?.Config.Hotkey ?? "Ctrl+Space"}") { IsEnabled = false };
+        menu.Add(_hotkeyItem);
+
+        _lastTranscriptionItem = new NativeMenuItem("🔊 (no transcription yet)") { IsEnabled = false };
+        menu.Add(_lastTranscriptionItem);
+
+        _pomodoroItem = new NativeMenuItem("🍅 Pomodoro: Off") { IsEnabled = false };
+        menu.Add(_pomodoroItem);
+
+        menu.Add(new NativeMenuItemSeparator());
+
+        // Actions
+        var showItem = new NativeMenuItem("👁️  Show Avatar");
+        showItem.Click += (_, _) => _avatarWindow?.Show();
+        menu.Add(showItem);
+
+        var hideItem = new NativeMenuItem("🙈 Hide Avatar");
+        hideItem.Click += (_, _) => _avatarWindow?.Hide();
+        menu.Add(hideItem);
+
+        var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
+        refreshItem.Click += (_, _) => _services?.RefreshSessions();
+        menu.Add(refreshItem);
+
+        menu.Add(new NativeMenuItemSeparator());
+
+        var quitItem = new NativeMenuItem("❌ Quit");
         quitItem.Click += (_, _) =>
         {
             _services?.Dispose();
@@ -103,4 +171,7 @@ public class App : Application
 
         return menu;
     }
+
+    private static string Truncate(string text, int maxLen)
+        => text.Length <= maxLen ? text : text[..maxLen] + "…";
 }

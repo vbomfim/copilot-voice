@@ -313,6 +313,28 @@ public sealed class AppServices : IDisposable
         }
     }
 
+    // Session management for tray menu
+    public bool IsSessionLocked => _sessionManager.IsLocked;
+
+    public void ToggleSessionLock()
+    {
+        _sessionManager.ToggleLock();
+        Log($"Session lock: {(IsSessionLocked ? "locked" : "auto")}");
+    }
+
+    public void SelectSession(CopilotSession session)
+    {
+        _sessionManager.SelectSession(session);
+        Log($"Selected session: {session.Label}");
+    }
+
+    public void RefreshSessions()
+    {
+        var sessions = _sessionDetector.DetectSessions();
+        Log($"Refreshed: {sessions.Count} session(s)");
+        OnSessionsRefreshed?.Invoke(sessions);
+    }
+
     private void Log(string msg)
     {
         Console.Error.WriteLine($"[copilot-voice] {msg}");

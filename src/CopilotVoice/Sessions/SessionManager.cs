@@ -30,6 +30,21 @@ public class SessionManager : IDisposable
         _lockedSession = null;
     }
 
+    public bool IsLocked => Mode == SessionTargetMode.Locked;
+
+    public void ToggleLock()
+    {
+        if (IsLocked)
+            Unlock();
+        else if (_currentTarget != null)
+            LockToSession(_currentTarget);
+    }
+
+    public void SelectSession(CopilotSession session)
+    {
+        LockToSession(session);
+    }
+
     public CopilotSession? GetTargetSession()
     {
         if (Mode == SessionTargetMode.Locked)

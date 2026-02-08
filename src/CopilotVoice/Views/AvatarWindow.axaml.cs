@@ -80,8 +80,8 @@ public partial class AvatarWindow : Window
     {
         StatusBadge.Text = state switch
         {
-            "Recording" => "🔴 Recording",
-            "Transcribing" => "⏳ Transcribing",
+            "Recording" => "🔴 Recording...",
+            "Transcribing" => "⏳ Transcribing...",
             "Speaking" => "🔊 Speaking",
             "Error" => "⚠️ Error",
             _ => "● Ready"
@@ -89,19 +89,17 @@ public partial class AvatarWindow : Window
 
         StatusBadge.Foreground = state switch
         {
-            "Recording" => Avalonia.Media.Brushes.Red,
-            "Error" => Avalonia.Media.Brushes.Orange,
-            _ => Avalonia.Media.Brushes.LightGreen
+            "Recording" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F38BA8")),
+            "Transcribing" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F9E2AF")),
+            "Speaking" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#89B4FA")),
+            "Error" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FAB387")),
+            _ => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#A6E3A1"))
         };
     }
 
     private void AppendLog(string msg)
     {
-        var existing = LogArea.Text ?? "";
-        var lines = existing.Split('\n');
-        // Keep last 8 lines
-        if (lines.Length > 8)
-            existing = string.Join('\n', lines[^8..]);
-        LogArea.Text = string.IsNullOrEmpty(existing) ? msg : $"{existing}\n{msg}";
+        // Log output goes to console only — no visible log area in the UI
+        System.Console.WriteLine($"[UI] {msg}");
     }
 }

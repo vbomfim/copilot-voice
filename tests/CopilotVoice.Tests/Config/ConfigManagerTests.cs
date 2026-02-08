@@ -29,7 +29,7 @@ public class ConfigManagerTests : IDisposable
         Assert.Equal(AuthMode.SignIn, config.AuthMode);
         Assert.Null(config.AzureSpeechKey);
         Assert.Equal("centralus", config.AzureSpeechRegion);
-        Assert.Equal("Ctrl+Shift+V", config.Hotkey);
+        Assert.Equal("Alt+Space", config.Hotkey);
         Assert.Equal("en-US", config.Language);
         Assert.True(config.ShowRecordingIndicator);
         Assert.True(config.AutoPressEnter);
