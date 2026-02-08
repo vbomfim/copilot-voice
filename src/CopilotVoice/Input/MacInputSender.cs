@@ -45,14 +45,30 @@ public class MacInputSender : IInputSender
         var terminalApp = app.Contains("iterm") ? "iTerm2" : "Terminal";
         var escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-        // Set clipboard, activate terminal, paste, optionally press enter
+        // Find the window whose name contains the session's title or "copilot",
+        // set clipboard, bring that window to front, paste, optionally enter
         var enterLine = pressEnter
-            ? "\ntell application \"System Events\" to keystroke return"
+            ? "\nkeystroke return"
             : "";
 
         return $@"set the clipboard to ""{escaped}""
-tell application ""{terminalApp}"" to activate
-delay 0.1
-tell application ""System Events"" to keystroke ""v"" using command down{enterLine}";
+tell application ""{terminalApp}""
+    activate
+    set targetWindow to missing value
+    repeat with w in windows
+        set wName to name of w
+        if wName contains ""copilot"" then
+            set targetWindow to w
+            exit repeat
+        end if
+    end repeat
+    if targetWindow is not missing value then
+        set index of targetWindow to 1
+    end if
+end tell
+delay 0.15
+tell application ""System Events""
+    keystroke ""v"" using command down{enterLine}
+end tell";
     }
 }
