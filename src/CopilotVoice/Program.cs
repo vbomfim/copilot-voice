@@ -61,17 +61,85 @@ class Program
     }
 
     /// <summary>
-    /// Run as MCP server over stdio. Copilot CLI launches this process
+    /// Run as MCP relay over stdio. Copilot CLI launches this process
     /// and communicates via JSON-RPC on stdin/stdout.
+    /// We relay to the tray app's MCP TCP server on localhost:7702.
     /// </summary>
     private static async Task RunMcpServerAsync()
     {
-        Console.Error.WriteLine("[copilot-voice] Starting in MCP server mode (stdio)");
+        Console.Error.WriteLine("[copilot-voice] Starting in MCP relay mode (stdio → TCP:7702)");
 
+        // Try to connect to the tray app's TCP MCP server
+        using var tcpClient = new System.Net.Sockets.TcpClient();
+        try
+        {
+            await tcpClient.ConnectAsync(System.Net.IPAddress.Loopback, 7702);
+            Console.Error.WriteLine("[copilot-voice] Connected to tray app MCP server");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[copilot-voice] Cannot connect to tray app on port 7702: {ex.Message}");
+            Console.Error.WriteLine("[copilot-voice] Falling back to standalone MCP server");
+            await RunStandaloneMcpServerAsync();
+            return;
+        }
+
+        var tcpStream = tcpClient.GetStream();
+        var stdinReader = new StreamReader(Console.OpenStandardInput());
+        var stdoutWriter = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+        var tcpReader = new StreamReader(tcpStream);
+        var tcpWriter = new StreamWriter(tcpStream) { AutoFlush = true };
+
+        using var cts = new CancellationTokenSource();
+
+        // Relay stdin → TCP
+        var stdinToTcp = Task.Run(async () =>
+        {
+            try
+            {
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    var line = await stdinReader.ReadLineAsync(cts.Token);
+                    if (line == null) break;
+                    await tcpWriter.WriteLineAsync(line);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Console.Error.WriteLine($"[relay] stdin→tcp error: {ex.Message}"); }
+            finally { cts.Cancel(); }
+        }, cts.Token);
+
+        // Relay TCP → stdout
+        var tcpToStdout = Task.Run(async () =>
+        {
+            try
+            {
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    var line = await tcpReader.ReadLineAsync(cts.Token);
+                    if (line == null) break;
+                    await stdoutWriter.WriteLineAsync(line);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { Console.Error.WriteLine($"[relay] tcp→stdout error: {ex.Message}"); }
+            finally { cts.Cancel(); }
+        }, cts.Token);
+
+        Console.Error.WriteLine("[copilot-voice] MCP relay active");
+        await Task.WhenAny(stdinToTcp, tcpToStdout);
+        cts.Cancel();
+        Console.Error.WriteLine("[copilot-voice] MCP relay shutting down");
+    }
+
+    /// <summary>
+    /// Standalone MCP server (fallback when tray app is not running).
+    /// </summary>
+    private static async Task RunStandaloneMcpServerAsync()
+    {
         await using var mcpServer = new McpServer();
         mcpServer.OnLog += msg => Console.Error.WriteLine($"[copilot-voice] {msg}");
 
-        // Wire tool handlers
         McpToolHandler.OnSpeak = async (text, voice) =>
         {
             await AppServices.SayStaticAsync(text);
@@ -86,15 +154,13 @@ class Program
             if (speak) await AppServices.SayStaticAsync(message);
         };
 
-        // Connect stdin/stdout as a client
         var reader = new StreamReader(Console.OpenStandardInput());
         var writer = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
 
         var client = await mcpServer.AddClientAsync(reader, writer);
 
-        Console.Error.WriteLine("[copilot-voice] MCP server ready, waiting for client messages...");
+        Console.Error.WriteLine("[copilot-voice] Standalone MCP server ready");
 
-        // Keep alive until stdin closes (client disconnects)
         var tcs = new TaskCompletionSource();
         client.OnDisconnected += _ => tcs.TrySetResult();
         await tcs.Task;

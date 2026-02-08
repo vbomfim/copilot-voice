@@ -25,6 +25,8 @@ public sealed class AppServices : IDisposable
     private MessageListener? _messageListener;
     private Hotkey.HotkeyListener? _hotkey;
     private Mcp.McpServer? _mcpServer;
+    private System.Net.Sockets.TcpListener? _mcpTcpListener;
+    private CancellationTokenSource? _mcpCts;
     private bool _isRecording;
     private bool _isBusy;
     private bool _disposed;
@@ -164,6 +166,24 @@ public sealed class AppServices : IDisposable
         catch (Exception ex)
         {
             Log($"Hotkey failed: {ex.Message}");
+        }
+
+        // MCP TCP server — lets Copilot CLI connect via TCP on port 7702
+        try
+        {
+            _mcpServer = new Mcp.McpServer();
+            _mcpServer.OnLog += msg => Log(msg);
+            Mcp.McpToolHandler.OnSpeak = async (text, _voice) => await SayStaticAsync(text);
+            _mcpCts = new CancellationTokenSource();
+            _mcpTcpListener = new System.Net.Sockets.TcpListener(
+                System.Net.IPAddress.Loopback, 7702);
+            _mcpTcpListener.Start();
+            Log("MCP server: localhost:7702");
+            _ = AcceptMcpClientsAsync(_mcpCts.Token);
+        }
+        catch (Exception ex)
+        {
+            Log($"MCP server: {ex.Message}");
         }
 
         // Start avatar idle animation
@@ -350,10 +370,33 @@ public sealed class AppServices : IDisposable
         }
     }
 
+    private async Task AcceptMcpClientsAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var tcpClient = await _mcpTcpListener!.AcceptTcpClientAsync(ct);
+                var stream = tcpClient.GetStream();
+                var reader = new StreamReader(stream);
+                var writer = new StreamWriter(stream) { AutoFlush = true };
+                var conn = await _mcpServer!.AddClientAsync(reader, writer, ct);
+                Log($"MCP client connected from TCP");
+            }
+            catch (OperationCanceledException) { break; }
+            catch (Exception ex)
+            {
+                Log($"MCP accept error: {ex.Message}");
+            }
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        _mcpCts?.Cancel();
+        _mcpTcpListener?.Stop();
         _hotkey?.Dispose();
         Animator.Dispose();
         _stt?.Dispose();
@@ -361,5 +404,6 @@ public sealed class AppServices : IDisposable
         _sessionManager.Dispose();
         _messageListener?.Dispose();
         _mcpServer?.DisposeAsync().AsTask().Wait(2000);
+        _mcpCts?.Dispose();
     }
 }
