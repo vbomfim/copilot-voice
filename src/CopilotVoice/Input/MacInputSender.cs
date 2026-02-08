@@ -12,9 +12,8 @@ public class MacInputSender : IInputSender
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(text);
 
-        // Strategy: activate Terminal, then use clipboard paste
-        // This avoids both "do script" (runs as command) and
-        // "keystroke" (types into wrong window) issues.
+        Console.Error.WriteLine($"[MacInputSender] Pasting {text.Length} chars to {session.TerminalApp}: \"{text[..Math.Min(80, text.Length)]}\"");
+
         var script = BuildClipboardPasteScript(session, text, pressEnter);
 
         using var process = new Process();
@@ -45,7 +44,7 @@ public class MacInputSender : IInputSender
         var escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
         var enterLine = pressEnter
-            ? "\nkeystroke return"
+            ? "\n    delay 0.05\n    keystroke return\n    delay 0.05\n    keystroke return"
             : "";
 
         // For apps with AppleScript support (Terminal.app, iTerm2),
@@ -61,6 +60,8 @@ tell application ""System Events""
 end tell
 -- Restore clipboard after brief delay
 delay 0.1
-set the clipboard to oldClip";
+try
+    set the clipboard to oldClip
+end try";
     }
 }

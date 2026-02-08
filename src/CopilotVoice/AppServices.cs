@@ -276,9 +276,9 @@ public sealed class AppServices : IDisposable
             {
                 try
                 {
-                    Log($"Sending to {target.Label}");
+                    Log($"Pasting to {target.Label}: \"{text}\"");
                     await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                    Log($"Sent to {target.Label}");
+                    Log($"Pasted to {target.Label} OK");
                     OnSpeechBubble?.Invoke(text, target.Label);
                 }
                 catch (Exception sendEx)
