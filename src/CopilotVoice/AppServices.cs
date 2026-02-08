@@ -556,8 +556,43 @@ public sealed class AppServices : IDisposable
     {
         try
         {
+            // Cross-platform: try to create a recognizer and start/stop immediately.
+            // FromDefaultMicrophoneInput() succeeds even with no mic on some platforms,
+            // but StartContinuousRecognitionAsync will fail with SPXERR_MIC_ERROR (0x15).
+            var key = _azureSpeechKey;
+            var region = _azureSpeechRegion;
+            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(region))
+                return true; // can't check without credentials, assume available
+
+            var speechConfig = Microsoft.CognitiveServices.Speech.SpeechConfig.FromSubscription(key, region);
             using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromDefaultMicrophoneInput();
-            return true;
+            using var recognizer = new Microsoft.CognitiveServices.Speech.SpeechRecognizer(speechConfig, audioConfig);
+
+            bool micOk = true;
+            var done = new ManualResetEventSlim(false);
+
+            recognizer.Canceled += (_, e) =>
+            {
+                if (e.ErrorCode == Microsoft.CognitiveServices.Speech.CancellationErrorCode.RuntimeError
+                    && e.ErrorDetails.Contains("0x15"))
+                {
+                    micOk = false;
+                }
+                done.Set();
+            };
+
+            recognizer.SessionStarted += (_, _) =>
+            {
+                // Mic opened successfully — stop immediately
+                recognizer.StopContinuousRecognitionAsync().Wait(1000);
+                done.Set();
+            };
+
+            recognizer.StartContinuousRecognitionAsync().Wait(2000);
+            done.Wait(2000);
+
+            try { recognizer.StopContinuousRecognitionAsync().Wait(1000); } catch { }
+            return micOk;
         }
         catch
         {
@@ -573,7 +608,7 @@ public sealed class AppServices : IDisposable
         {
             while (!ct.IsCancellationRequested)
             {
-                try { await Task.Delay(3000, ct); } catch { break; }
+                try { await Task.Delay(5000, ct); } catch { break; }
                 var available = CheckMicrophoneAvailable();
                 if (available != _hasMicrophone)
                 {
