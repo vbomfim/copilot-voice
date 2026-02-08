@@ -2,54 +2,68 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:views="using:CopilotVoice.Views"
         x:Class="CopilotVoice.Views.AvatarWindow"
-        Title="🤖 Copilot Voice"
-        Width="300" Height="380"
+        Title="Copilot Voice"
+        Width="280" Height="400"
         CanResize="False"
-        SystemDecorations="Full"
+        SystemDecorations="None"
         WindowStartupLocation="Manual"
-        Background="#1E1E2E"
-        Topmost="True">
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False">
 
-    <Grid RowDefinitions="Auto,*,Auto,Auto">
+    <Border Background="#1E1E2E" CornerRadius="12" BorderBrush="#3B3B5C" BorderThickness="1"
+            ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
 
-        <!-- Header -->
-        <Border Grid.Row="0" Padding="12,8" Background="#2D2D44">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <TextBlock Text="🤖" FontSize="18" VerticalAlignment="Center"/>
-                <TextBlock Text="Copilot Voice" FontSize="14" FontWeight="Bold"
-                           Foreground="#CDD6F4" VerticalAlignment="Center"/>
-                <TextBlock x:Name="StatusBadge" Text="● Starting..." FontSize="11"
-                           Foreground="#F9E2AF" VerticalAlignment="Center" Margin="8,0,0,0"/>
-            </StackPanel>
-        </Border>
-
-        <!-- Pixel Art Avatar -->
-        <Border Grid.Row="1" Padding="8" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <views:PixelAvatarControl x:Name="AvatarPixel"/>
-        </Border>
-
-        <!-- Speech Bubble -->
-        <Border Grid.Row="2" Padding="12,8" Background="#313244" CornerRadius="8" Margin="12,4">
-            <StackPanel Spacing="4">
-                <StackPanel Orientation="Horizontal" Spacing="6">
-                    <TextBlock x:Name="SessionLabel" Text="📂 waiting..."
-                               FontSize="11" Foreground="#94A3B8"/>
+            <!-- Header (replaces title bar) -->
+            <Border Grid.Row="0" Padding="12,8" Background="#2D2D44"
+                    CornerRadius="12,12,0,0">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="🤖" FontSize="16" VerticalAlignment="Center"/>
+                    <TextBlock Text="Copilot Voice" FontSize="13" FontWeight="Bold"
+                               Foreground="#CDD6F4" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusBadge" Text="● Starting..." FontSize="11"
+                               Foreground="#F9E2AF" VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </StackPanel>
-                <TextBlock x:Name="SpeechBubble" Text=""
-                           FontSize="13" Foreground="#CDD6F4" TextWrapping="Wrap"
-                           MaxHeight="50" FontStyle="Italic"/>
+            </Border>
+
+            <!-- Speech Balloon (above avatar) -->
+            <StackPanel Grid.Row="1" x:Name="BalloonPanel" Margin="14,8,14,0"
+                        IsVisible="False">
+                <Border Background="#45475A" CornerRadius="10" Padding="12,8">
+                    <TextBlock x:Name="SpeechBubble" Text=""
+                               FontSize="12" Foreground="#CDD6F4" TextWrapping="Wrap"
+                               MaxHeight="60" TextAlignment="Center"/>
+                </Border>
+                <!-- Triangle pointer pointing down to avatar -->
+                <Canvas Height="10" HorizontalAlignment="Center" Width="20">
+                    <Polygon Points="0,0 20,0 10,10" Fill="#45475A"/>
+                </Canvas>
             </StackPanel>
-        </Border>
 
-        <!-- Status Bar -->
-        <Border Grid.Row="3" Padding="12,8" Background="#2D2D44">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock x:Name="HotkeyLabel" Text="⌨️ Ctrl+Space"
-                           FontSize="11" Foreground="#6C7086" VerticalAlignment="Center"/>
-                <TextBlock x:Name="TimerLabel" Grid.Column="1" Text=""
-                           FontSize="11" Foreground="#F9E2AF" VerticalAlignment="Center"/>
-            </Grid>
-        </Border>
+            <!-- Pixel Art Avatar -->
+            <Border Grid.Row="2" Padding="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <views:PixelAvatarControl x:Name="AvatarPixel"/>
+            </Border>
 
-    </Grid>
+            <!-- Session info -->
+            <Border Grid.Row="3" Padding="10,4" Margin="10,0">
+                <TextBlock x:Name="SessionLabel" Text="📂 waiting..."
+                           FontSize="10" Foreground="#6C7086" HorizontalAlignment="Center"/>
+            </Border>
+
+            <!-- Status Bar -->
+            <Border Grid.Row="4" Padding="10,6" Background="#2D2D44"
+                    CornerRadius="0,0,12,12">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock x:Name="HotkeyLabel" Text="⌨️ Ctrl+Space"
+                               FontSize="10" Foreground="#6C7086" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="TimerLabel" Grid.Column="1" Text=""
+                               FontSize="10" Foreground="#F9E2AF" VerticalAlignment="Center"/>
+                </Grid>
+            </Border>
+
+        </Grid>
+    </Border>
 </Window>

@@ -19,6 +19,7 @@ public class MessageListener : IDisposable
     };
 
     public event Action<InboundMessage>? OnMessageReceived;
+    public event Action<InboundMessage>? OnBubbleReceived;
 
     public MessageListener(int port = 7701)
     {
@@ -90,6 +91,12 @@ public class MessageListener : IDisposable
                 return;
             }
 
+            if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/bubble")
+            {
+                await HandleBubble(request, response);
+                return;
+            }
+
             await WriteResponse(response, 404, """{"error":"not found"}""");
         }
         catch
@@ -129,6 +136,35 @@ public class MessageListener : IDisposable
 
         _queue.Enqueue(message);
         await WriteResponse(response, 202, """{"status":"queued"}""");
+    }
+
+    private async Task HandleBubble(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        string body;
+        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
+        {
+            body = await reader.ReadToEndAsync();
+        }
+
+        InboundMessage? message;
+        try
+        {
+            message = JsonSerializer.Deserialize<InboundMessage>(body, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            await WriteResponse(response, 400, """{"error":"malformed JSON"}""");
+            return;
+        }
+
+        if (message is null || string.IsNullOrWhiteSpace(message.Text))
+        {
+            await WriteResponse(response, 400, """{"error":"missing required field: text"}""");
+            return;
+        }
+
+        OnBubbleReceived?.Invoke(message);
+        await WriteResponse(response, 200, """{"status":"ok"}""");
     }
 
     private static async Task WriteResponse(HttpListenerResponse response, int statusCode, string json)

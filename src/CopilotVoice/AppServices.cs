@@ -144,6 +144,10 @@ public sealed class AppServices : IDisposable
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
+            _messageListener.OnBubbleReceived += msg =>
+            {
+                OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
+            };
             _messageListener.Start();
             Log("Message listener: localhost:7701");
         }
@@ -279,26 +283,16 @@ public sealed class AppServices : IDisposable
                     Log($"Pasting to {target.Label}: \"{text}\"");
                     await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
                     Log($"Pasted to {target.Label} OK");
-                    OnSpeechBubble?.Invoke(text, target.Label);
                 }
                 catch (Exception sendEx)
                 {
                     Log($"Send failed: {sendEx.Message} — text is in clipboard");
-                    OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
                 }
             }
             else
             {
                 Log("No target session — text is in clipboard (Cmd+V to paste)");
-                OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
             }
-
-            // Speech bubble auto-clear after delay
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(3000);
-                OnSpeechBubble?.Invoke(null, null);
-            });
 
             OnStateChanged?.Invoke("Ready");
         }

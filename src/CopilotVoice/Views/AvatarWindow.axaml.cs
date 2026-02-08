@@ -43,7 +43,18 @@ public partial class AvatarWindow : Window
         services.OnSpeechBubble += (text, label) =>
             Dispatcher.UIThread.Post(() =>
             {
-                SpeechBubble.Text = string.IsNullOrEmpty(text) ? "" : $"\U0001f4ac {text}";
+                if (string.IsNullOrEmpty(text))
+                {
+                    // Hide balloon when text is cleared
+                    BalloonPanel.IsVisible = false;
+                    SpeechBubble.Text = "";
+                }
+                else
+                {
+                    // Show balloon with text
+                    SpeechBubble.Text = text;
+                    BalloonPanel.IsVisible = true;
+                }
                 if (!string.IsNullOrEmpty(label))
                     SessionLabel.Text = $"\U0001f4c2 {label}";
             });
