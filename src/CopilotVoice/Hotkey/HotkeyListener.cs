@@ -76,7 +76,8 @@ public class HotkeyListener : IDisposable
         if (!_isActive && _targetKeys.IsSubsetOf(_pressedKeys))
         {
             _isActive = true;
-            OnPushToTalkStart?.Invoke();
+            try { OnPushToTalkStart?.Invoke(); }
+            catch (Exception ex) { OnError?.Invoke($"Start handler error: {ex.Message}"); }
         }
     }
 
@@ -89,7 +90,8 @@ public class HotkeyListener : IDisposable
         if (_isActive && !_targetKeys.IsSubsetOf(_pressedKeys))
         {
             _isActive = false;
-            OnPushToTalkStop?.Invoke();
+            try { OnPushToTalkStop?.Invoke(); }
+            catch (Exception ex) { OnError?.Invoke($"Stop handler error: {ex.Message}"); }
         }
     }
 

@@ -133,12 +133,16 @@ public sealed class AppServices : IDisposable
             _messageListener = new MessageListener();
             _messageListener.OnMessageReceived += async msg =>
             {
-                if (_tts != null)
+                try
                 {
-                    OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
-                    await _tts.SpeakAsync(msg.Text);
-                    OnSpeechBubble?.Invoke(null, null);
+                    if (_tts != null)
+                    {
+                        OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
+                        await _tts.SpeakAsync(msg.Text);
+                        OnSpeechBubble?.Invoke(null, null);
+                    }
                 }
+                catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
             _messageListener.Start();
             Log("Message listener: localhost:7701");

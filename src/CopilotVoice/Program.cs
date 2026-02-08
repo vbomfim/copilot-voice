@@ -10,11 +10,17 @@ class Program
     {
         // Global exception handlers to prevent silent crashes
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            Console.Error.WriteLine($"[CRASH] Unhandled: {e.ExceptionObject}");
+        {
+            var msg = $"[CRASH] Unhandled: {e.ExceptionObject}";
+            Console.Error.WriteLine(msg);
+            File.AppendAllText("/tmp/copilot-voice-crash.log", $"{DateTime.Now}: {msg}\n");
+        };
         TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            Console.Error.WriteLine($"[CRASH] Unobserved task: {e.Exception}");
-            e.SetObserved(); // Prevent process termination
+            var msg = $"[CRASH] Unobserved task: {e.Exception}";
+            Console.Error.WriteLine(msg);
+            File.AppendAllText("/tmp/copilot-voice-crash.log", $"{DateTime.Now}: {msg}\n");
+            e.SetObserved();
         };
 
         var cliArgs = CliArgs.Parse(args);
