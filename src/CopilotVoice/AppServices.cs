@@ -600,24 +600,14 @@ public sealed class AppServices : IDisposable
         catch { return false; }
     }
 
-    // Windows: check for audio capture devices via MMDevice API
+    // Windows: lightweight check via winmm.dll
+    [System.Runtime.InteropServices.DllImport("winmm.dll")]
+    private static extern uint waveInGetNumDevs();
+
     private static bool CheckMicrophoneWindows()
     {
-        try
-        {
-            // Use WMI via Process to check for audio input devices
-            var psi = new System.Diagnostics.ProcessStartInfo("powershell", "-NoProfile -Command \"(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' }).Count\"")
-            {
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            using var proc = System.Diagnostics.Process.Start(psi);
-            var output = proc?.StandardOutput.ReadToEnd().Trim();
-            proc?.WaitForExit(2000);
-            return int.TryParse(output, out var count) && count > 0;
-        }
-        catch { return true; } // assume available on failure
+        try { return waveInGetNumDevs() > 0; }
+        catch { return true; }
     }
 
     private void StartMicMonitor()
