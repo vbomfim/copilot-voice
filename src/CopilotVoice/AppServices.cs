@@ -323,16 +323,37 @@ public sealed class AppServices : IDisposable
     {
         if (OperatingSystem.IsMacOS())
         {
-            using var process = new System.Diagnostics.Process();
-            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.aiff");
+            try
             {
-                FileName = "say",
-                Arguments = $"\"{text.Replace("\"", "\\\"")}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            process.Start();
-            await process.WaitForExitAsync();
+                // Render to file first (avoids audio buffer clipping)
+                using var sayProcess = new System.Diagnostics.Process();
+                sayProcess.StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "say",
+                    Arguments = $"-o \"{tmpFile}\" \"{text.Replace("\"", "\\\"")}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                sayProcess.Start();
+                await sayProcess.WaitForExitAsync();
+
+                // Play the rendered audio
+                using var playProcess = new System.Diagnostics.Process();
+                playProcess.StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "afplay",
+                    Arguments = $"\"{tmpFile}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                playProcess.Start();
+                await playProcess.WaitForExitAsync();
+            }
+            finally
+            {
+                try { File.Delete(tmpFile); } catch { }
+            }
         }
     }
 
