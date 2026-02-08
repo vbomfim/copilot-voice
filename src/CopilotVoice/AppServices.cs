@@ -273,48 +273,27 @@ public sealed class AppServices : IDisposable
                 Log($"Clipboard failed: {clipEx.Message}");
             }
 
-            // Try MCP first — if any MCP client is connected, send notification (no clipboard paste)
-            var hasMcpClient = _mcpServer != null && _mcpServer.Clients.Any(c => c.IsInitialized);
-            if (hasMcpClient)
+            // Always paste into console (delivers text as a prompt)
+            var target = _sessionManager.GetTargetSession();
+            if (target != null && _inputSender != null)
             {
                 try
                 {
-                    Log("Sending via MCP notification");
-                    await _mcpServer!.BroadcastNotificationAsync("notifications/voice_transcription", new { text });
-                    Log("MCP notification sent — skipping clipboard paste");
-                    OnSpeechBubble?.Invoke(text, "MCP");
+                    Log($"Sending to {target.Label}");
+                    await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
+                    Log($"Sent to {target.Label}");
+                    OnSpeechBubble?.Invoke(text, target.Label);
                 }
-                catch (Exception mcpEx)
+                catch (Exception sendEx)
                 {
-                    Log($"MCP notification failed: {mcpEx.Message}, falling back to clipboard paste");
-                    hasMcpClient = false; // fall through to clipboard
-                }
-            }
-
-            if (!hasMcpClient)
-            {
-                // Send to target session via clipboard paste
-                var target = _sessionManager.GetTargetSession();
-                if (target != null && _inputSender != null)
-                {
-                    try
-                    {
-                        Log($"Sending to {target.Label}");
-                        await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                        Log($"Sent to {target.Label}");
-                        OnSpeechBubble?.Invoke(text, target.Label);
-                    }
-                    catch (Exception sendEx)
-                    {
-                        Log($"Send failed: {sendEx.Message} — text is in clipboard");
-                        OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
-                    }
-                }
-                else
-                {
-                    Log("No target session — text is in clipboard (Cmd+V to paste)");
+                    Log($"Send failed: {sendEx.Message} — text is in clipboard");
                     OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
                 }
+            }
+            else
+            {
+                Log("No target session — text is in clipboard (Cmd+V to paste)");
+                OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
             }
 
             // Speech bubble auto-clear after delay
