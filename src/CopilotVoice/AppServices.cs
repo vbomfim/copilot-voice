@@ -554,50 +554,70 @@ public sealed class AppServices : IDisposable
 
     private static bool CheckMicrophoneAvailable()
     {
+        if (OperatingSystem.IsMacOS())
+            return CheckMicrophoneMacOS();
+        if (OperatingSystem.IsWindows())
+            return CheckMicrophoneWindows();
+        // Linux: assume available (no reliable lightweight check)
+        return true;
+    }
+
+    // macOS: CoreAudio P/Invoke — checks if a default input device exists without opening it
+    [System.Runtime.InteropServices.DllImport("/System/Library/Frameworks/CoreAudio.framework/CoreAudio")]
+    private static extern int AudioObjectGetPropertyData(
+        uint objectID, ref CoreAudioPropertyAddress address,
+        uint qualifierDataSize, IntPtr qualifierData,
+        ref uint dataSize, out uint data);
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct CoreAudioPropertyAddress
+    {
+        public uint mSelector;
+        public uint mScope;
+        public uint mElement;
+    }
+
+    private static bool CheckMicrophoneMacOS()
+    {
         try
         {
-            // Cross-platform: try to create a recognizer and start/stop immediately.
-            // FromDefaultMicrophoneInput() succeeds even with no mic on some platforms,
-            // but StartContinuousRecognitionAsync will fail with SPXERR_MIC_ERROR (0x15).
-            var key = _azureSpeechKey;
-            var region = _azureSpeechRegion;
-            if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(region))
-                return true; // can't check without credentials, assume available
+            const uint kAudioHardwarePropertyDefaultInputDevice = 0x64496E20; // 'dIn '
+            const uint kAudioObjectPropertyScopeGlobal = 0x676C6F62;          // 'glob'
+            const uint kAudioObjectPropertyElementMain = 0;
+            const uint kAudioObjectSystemObject = 1;
+            const uint kAudioObjectUnknown = 0;
 
-            var speechConfig = Microsoft.CognitiveServices.Speech.SpeechConfig.FromSubscription(key, region);
-            using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromDefaultMicrophoneInput();
-            using var recognizer = new Microsoft.CognitiveServices.Speech.SpeechRecognizer(speechConfig, audioConfig);
-
-            bool micOk = true;
-            var done = new ManualResetEventSlim(false);
-
-            recognizer.Canceled += (_, e) =>
+            var address = new CoreAudioPropertyAddress
             {
-                if (e.ErrorCode == Microsoft.CognitiveServices.Speech.CancellationErrorCode.RuntimeError
-                    && e.ErrorDetails.Contains("0x15"))
-                {
-                    micOk = false;
-                }
-                done.Set();
+                mSelector = kAudioHardwarePropertyDefaultInputDevice,
+                mScope = kAudioObjectPropertyScopeGlobal,
+                mElement = kAudioObjectPropertyElementMain
             };
-
-            recognizer.SessionStarted += (_, _) =>
-            {
-                // Mic opened successfully — stop immediately
-                recognizer.StopContinuousRecognitionAsync().Wait(1000);
-                done.Set();
-            };
-
-            recognizer.StartContinuousRecognitionAsync().Wait(2000);
-            done.Wait(2000);
-
-            try { recognizer.StopContinuousRecognitionAsync().Wait(1000); } catch { }
-            return micOk;
+            uint size = 4;
+            int status = AudioObjectGetPropertyData(kAudioObjectSystemObject, ref address, 0, IntPtr.Zero, ref size, out uint deviceID);
+            return status == 0 && deviceID != kAudioObjectUnknown;
         }
-        catch
+        catch { return false; }
+    }
+
+    // Windows: check for audio capture devices via MMDevice API
+    private static bool CheckMicrophoneWindows()
+    {
+        try
         {
-            return false;
+            // Use WMI via Process to check for audio input devices
+            var psi = new System.Diagnostics.ProcessStartInfo("powershell", "-NoProfile -Command \"(Get-CimInstance Win32_SoundDevice | Where-Object { $_.Status -eq 'OK' }).Count\"")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var proc = System.Diagnostics.Process.Start(psi);
+            var output = proc?.StandardOutput.ReadToEnd().Trim();
+            proc?.WaitForExit(2000);
+            return int.TryParse(output, out var count) && count > 0;
         }
+        catch { return true; } // assume available on failure
     }
 
     private void StartMicMonitor()
