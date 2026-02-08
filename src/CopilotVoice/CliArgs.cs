@@ -7,6 +7,7 @@ public class CliArgs
     public string? Hotkey { get; set; }
     public string? SessionId { get; set; }
     public bool ListSessions { get; set; }
+    public bool McpMode { get; set; }
     public bool ShowHelp { get; set; }
 
     public static CliArgs Parse(string[] args)
@@ -30,6 +31,9 @@ public class CliArgs
                     break;
                 case "--list-sessions":
                     result.ListSessions = true;
+                    break;
+                case "--mcp":
+                    result.McpMode = true;
                     break;
                 case "--help" or "-h":
                     result.ShowHelp = true;
@@ -67,6 +71,7 @@ public class CliArgs
               --hotkey <combo>    Push-to-talk hotkey (default: Ctrl+Shift+V)
               --session <id>      Target a specific session
               --list-sessions     List active Copilot CLI sessions and exit
+              --mcp               Run as MCP server (stdio JSON-RPC)
               --help, -h          Show this help message
 
             Environment variables:

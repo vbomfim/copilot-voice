@@ -24,8 +24,9 @@ public sealed class AppServices : IDisposable
     private IInputSender? _inputSender;
     private MessageListener? _messageListener;
     private Hotkey.HotkeyListener? _hotkey;
+    private Mcp.McpServer? _mcpServer;
     private bool _isRecording;
-    private bool _isBusy; // prevents re-entrant hotkey handling
+    private bool _isBusy;
     private bool _disposed;
 
     // UI events
@@ -137,7 +138,7 @@ public sealed class AppServices : IDisposable
                 try
                 {
                     OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
-                    await SayAsync(msg.Text);
+                    await SayStaticAsync(msg.Text);
                     OnSpeechBubble?.Invoke(null, null);
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
@@ -224,27 +225,51 @@ public sealed class AppServices : IDisposable
                 Log($"Clipboard failed: {clipEx.Message}");
             }
 
-            // Send to target session
-            var target = _sessionManager.GetTargetSession();
-            if (target != null && _inputSender != null)
+            // Try MCP sampling first (proper protocol), fall back to clipboard paste
+            var sentViaMcp = false;
+            if (_mcpServer != null && _mcpServer.Clients.Any(c => c.Capabilities?.SupportsSampling == true))
             {
                 try
                 {
-                    Log($"Sending to {target.Label}");
-                    await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                    Log($"Sent to {target.Label}");
-                    OnSpeechBubble?.Invoke(text, target.Label);
+                    Log("Sending via MCP sampling/createMessage");
+                    var result = await _mcpServer.BroadcastSamplingAsync(text, TimeSpan.FromSeconds(30));
+                    if (result != null)
+                    {
+                        sentViaMcp = true;
+                        Log($"MCP response: {result.Content?.Text?[..Math.Min(60, result.Content.Text.Length)] ?? "null"}");
+                        OnSpeechBubble?.Invoke(text, "MCP");
+                    }
                 }
-                catch (Exception sendEx)
+                catch (Exception mcpEx)
                 {
-                    Log($"Send failed: {sendEx.Message} — text is in clipboard");
-                    OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
+                    Log($"MCP sampling failed: {mcpEx.Message}");
                 }
             }
-            else
+
+            if (!sentViaMcp)
             {
-                Log("No target session — text is in clipboard (Cmd+V to paste)");
-                OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
+                // Send to target session via clipboard paste
+                var target = _sessionManager.GetTargetSession();
+                if (target != null && _inputSender != null)
+                {
+                    try
+                    {
+                        Log($"Sending to {target.Label}");
+                        await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
+                        Log($"Sent to {target.Label}");
+                        OnSpeechBubble?.Invoke(text, target.Label);
+                    }
+                    catch (Exception sendEx)
+                    {
+                        Log($"Send failed: {sendEx.Message} — text is in clipboard");
+                        OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
+                    }
+                }
+                else
+                {
+                    Log("No target session — text is in clipboard (Cmd+V to paste)");
+                    OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
+                }
             }
 
             // Speech bubble auto-clear after delay
@@ -273,7 +298,7 @@ public sealed class AppServices : IDisposable
         OnLog?.Invoke(msg);
     }
 
-    private static async Task SayAsync(string text)
+    public static async Task SayStaticAsync(string text)
     {
         if (OperatingSystem.IsMacOS())
         {
@@ -335,5 +360,6 @@ public sealed class AppServices : IDisposable
         _tts?.Dispose();
         _sessionManager.Dispose();
         _messageListener?.Dispose();
+        _mcpServer?.DisposeAsync().AsTask().Wait(2000);
     }
 }
