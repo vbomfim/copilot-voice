@@ -13,6 +13,7 @@ public partial class AvatarWindow : Window
     private PixelPoint _dragStart;
     private bool _isRecordBlinking;
     private CancellationTokenSource? _blinkCts;
+    private bool _micAvailable = true;
 
     private bool _firstOpen = true;
     private PixelPoint _savedPosition;
@@ -193,9 +194,15 @@ public partial class AvatarWindow : Window
         services.OnMicAvailabilityChanged += available =>
             Dispatcher.UIThread.Post(() =>
             {
+                _micAvailable = available;
                 RecordButton.Opacity = available ? 1.0 : 0.3;
                 RecordButton.IsHitTestVisible = available;
                 ToolTip.SetTip(RecordButton, available ? "Hold to talk" : "No microphone detected");
+                HotkeyLabel.Text = available
+                    ? $"\u2328\ufe0f {services.Config.Hotkey}"
+                    : "\U0001f3a4\u2715 No mic";
+                HotkeyLabel.Foreground = new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.Parse(available ? "#6C7086" : "#FAB387"));
             });
 
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
@@ -274,6 +281,10 @@ public partial class AvatarWindow : Window
 
     private void UpdateStatus(string state)
     {
+        // Don't show generic "Ready" if mic is unavailable — keep showing "No mic"
+        if (state == "Ready" && !_micAvailable)
+            return;
+
         StatusBadge.Text = state switch
         {
             "Recording" => "\U0001f534 Recording...",

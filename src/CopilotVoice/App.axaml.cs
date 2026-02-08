@@ -12,6 +12,7 @@ public class App : Application
     private AppServices? _services;
     private NativeMenuItem? _lastTranscriptionItem;
     private NativeMenuItem? _hotkeyItem;
+    private NativeMenuItem? _micStatusItem;
     private NativeMenuItem? _pomodoroItem;
     private NativeMenuItem? _sessionsItem;
     private NativeMenuItem? _lockToggleItem;
@@ -93,6 +94,13 @@ public class App : Application
                     }
                 });
 
+            _services.OnMicAvailabilityChanged += available =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_micStatusItem != null)
+                        _micStatusItem.Header = available ? "🎤 Mic: OK" : "🎤✕ No microphone";
+                });
+
             _ = _services.StartAsync();
         }
 
@@ -156,6 +164,9 @@ public class App : Application
         // Info section
         _hotkeyItem = new NativeMenuItem($"⌨️  Hotkey: {_services?.Config.Hotkey ?? "Ctrl+Space"}") { IsEnabled = false };
         menu.Add(_hotkeyItem);
+
+        _micStatusItem = new NativeMenuItem("🎤 Mic: OK") { IsEnabled = false };
+        menu.Add(_micStatusItem);
 
         _lastTranscriptionItem = new NativeMenuItem("🔊 (no transcription yet)") { IsEnabled = false };
         menu.Add(_lastTranscriptionItem);
