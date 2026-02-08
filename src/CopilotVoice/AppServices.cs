@@ -29,6 +29,7 @@ public sealed class AppServices : IDisposable
     private bool _isRecording;
     private bool _isBusy;
     private bool _disposed;
+    private bool _hasMicrophone = true;
 
     // UI events
     public event Action<string>? OnStateChanged;
@@ -38,6 +39,7 @@ public sealed class AppServices : IDisposable
     public event Action<string?, TimeSpan>? OnTimerTick;
     public event Action<List<CopilotSession>>? OnSessionsRefreshed;
     public event Action<string>? OnLog;
+    public event Action<bool>? OnMicAvailabilityChanged;
     // Window control: action, x, y, position → result
     public event Func<string, int?, int?, string?, Task<string>>? OnWindowControl;
 
@@ -132,6 +134,14 @@ public sealed class AppServices : IDisposable
             {
                 Log($"TTS init failed: {ex.Message}");
             }
+        }
+
+        // Check microphone availability
+        _hasMicrophone = CheckMicrophoneAvailable();
+        if (!_hasMicrophone)
+        {
+            Log("No microphone detected");
+            OnMicAvailabilityChanged?.Invoke(false);
         }
 
         // STT
@@ -256,6 +266,25 @@ public sealed class AppServices : IDisposable
     private async void OnHotkeyDown()
     {
         if (_isRecording || _isBusy || _stt == null) return;
+
+        // Re-check mic if previously unavailable
+        if (!_hasMicrophone)
+        {
+            _hasMicrophone = CheckMicrophoneAvailable();
+            if (_hasMicrophone)
+            {
+                Log("Microphone reconnected");
+                OnMicAvailabilityChanged?.Invoke(true);
+                OnSpeechBubble?.Invoke(null, null); // clear error balloon
+            }
+            else
+            {
+                OnSpeechBubble?.Invoke("No microphone available. Please connect a mic and try again.", null);
+                OnStateChanged?.Invoke("Error");
+                return;
+            }
+        }
+
         if (!_recordLock.Wait(0)) return; // non-blocking trylock
         try
         {
@@ -278,6 +307,11 @@ public sealed class AppServices : IDisposable
             Log($"Mic error: {ex.Message}");
             OnStateChanged?.Invoke("Error");
             OnSpeechBubble?.Invoke(friendly, null);
+            if (ex.Message.Contains("0x15") || ex.Message.Contains("MIC_ERROR"))
+            {
+                _hasMicrophone = false;
+                OnMicAvailabilityChanged?.Invoke(false);
+            }
             _isRecording = false;
         }
         finally
@@ -525,5 +559,18 @@ public sealed class AppServices : IDisposable
         _sessionManager.Dispose();
         _messageListener?.Dispose();
         _mcpServer?.DisposeAsync().AsTask().Wait(2000);
+    }
+
+    private static bool CheckMicrophoneAvailable()
+    {
+        try
+        {
+            using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromDefaultMicrophoneInput();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

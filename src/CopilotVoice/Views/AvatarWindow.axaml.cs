@@ -190,6 +190,14 @@ public partial class AvatarWindow : Window
             return await tcs.Task;
         };
 
+        services.OnMicAvailabilityChanged += available =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                RecordButton.Opacity = available ? 1.0 : 0.3;
+                RecordButton.IsHitTestVisible = available;
+                ToolTip.SetTip(RecordButton, available ? "Hold to talk" : "No microphone detected");
+            });
+
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
     }
 
