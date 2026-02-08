@@ -67,6 +67,64 @@ public static class McpToolDefinitions
                 required = new[] { "message" },
             },
         },
+        new
+        {
+            name = "copilot-voice-listen",
+            description = "Start listening for voice input via microphone. Returns the transcribed text when the user finishes speaking.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["duration_seconds"] = new { type = "number", description = "Max listen duration in seconds (default: 10)" },
+                    ["language"] = new { type = "string", description = "Language code, e.g. en-US (optional)" },
+                },
+            },
+        },
+        new
+        {
+            name = "copilot-voice-speak",
+            description = "Speak text aloud using text-to-speech. Use this to give voice feedback to the user.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["text"] = new { type = "string", description = "The text to speak aloud" },
+                    ["voice"] = new { type = "string", description = "Voice name (optional)" },
+                },
+                required = new[] { "text" },
+            },
+        },
+        new
+        {
+            name = "copilot-voice-set_avatar",
+            description = "Change the avatar's expression or state in the Copilot Voice UI.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["expression"] = new { type = "string", description = "Expression: normal, thinking, speaking, listening, focused, relaxed, sleeping" },
+                },
+                required = new[] { "expression" },
+            },
+        },
+        new
+        {
+            name = "copilot-voice-notify",
+            description = "Show a notification message in the Copilot Voice avatar UI with optional voice.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["message"] = new { type = "string", description = "Notification message" },
+                    ["speak"] = new { type = "boolean", description = "Also speak the message aloud (default: true)" },
+                },
+                required = new[] { "message" },
+            },
+        },
     };
 }
 
@@ -85,10 +143,10 @@ public static class McpToolHandler
     {
         return toolName switch
         {
-            "speak" => await HandleSpeakAsync(args),
-            "listen" => await HandleListenAsync(args),
-            "set_avatar" => HandleSetAvatar(args),
-            "notify" => await HandleNotifyAsync(args),
+            "speak" or "copilot-voice-speak" => await HandleSpeakAsync(args),
+            "listen" or "copilot-voice-listen" => await HandleListenAsync(args),
+            "set_avatar" or "copilot-voice-set_avatar" => HandleSetAvatar(args),
+            "notify" or "copilot-voice-notify" => await HandleNotifyAsync(args),
             _ => new { content = new[] { new { type = "text", text = $"Unknown tool: {toolName}" } }, isError = true },
         };
     }

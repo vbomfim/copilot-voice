@@ -15,6 +15,7 @@ public class PushToTalkRecognizer : IDisposable
     private bool _disposed;
 
     public event Action<string>? OnPartialResult;
+    public event Action<string>? OnFinalResult;
     public event Action<string>? OnError;
     public event Action<string>? OnLog;
 
@@ -111,6 +112,8 @@ public class PushToTalkRecognizer : IDisposable
 
         var result = string.Join(" ", _recognizedSegments);
         OnLog?.Invoke($"STT result: \"{result}\" ({_recognizedSegments.Count} segments)");
+        if (!string.IsNullOrEmpty(result))
+            OnFinalResult?.Invoke(result);
         return result;
     }
 

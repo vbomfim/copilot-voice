@@ -128,7 +128,7 @@ public class McpServerTests
         Assert.Contains("listen", toolNames);
         Assert.Contains("set_avatar", toolNames);
         Assert.Contains("notify", toolNames);
-        Assert.Equal(4, toolNames.Count);
+        Assert.Equal(8, toolNames.Count);
     }
 
     [Fact]

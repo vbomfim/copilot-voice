@@ -174,6 +174,34 @@ public sealed class AppServices : IDisposable
             _mcpServer = new Mcp.McpServer();
             _mcpServer.OnLog += msg => Log(msg);
             Mcp.McpToolHandler.OnSpeak = async (text, _voice) => await SayStaticAsync(text);
+            Mcp.McpToolHandler.OnListen = async (duration, _lang) =>
+            {
+                if (_stt == null) return "Listening not available";
+                var tcs = new TaskCompletionSource<string>();
+                void handler(string text) { tcs.TrySetResult(text); }
+                _stt.OnFinalResult += handler;
+                try
+                {
+                    OnStateChanged?.Invoke("Recording");
+                    await _stt.StartRecordingAsync();
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(duration));
+                    cts.Token.Register(() => tcs.TrySetResult(""));
+                    var result = await tcs.Task;
+                    await _stt.StopRecordingAndTranscribeAsync();
+                    OnStateChanged?.Invoke("Ready");
+                    return result;
+                }
+                finally { _stt.OnFinalResult -= handler; }
+            };
+            Mcp.McpToolHandler.OnNotify = async (message, speak) =>
+            {
+                OnSpeechBubble?.Invoke(message, "notify");
+                if (speak) await SayStaticAsync(message);
+            };
+            Mcp.McpToolHandler.OnSetAvatar = expr =>
+            {
+                OnStateChanged?.Invoke(expr);
+            };
             _mcpCts = new CancellationTokenSource();
             _mcpTcpListener = new System.Net.Sockets.TcpListener(
                 System.Net.IPAddress.Loopback, 7702);
@@ -245,28 +273,25 @@ public sealed class AppServices : IDisposable
                 Log($"Clipboard failed: {clipEx.Message}");
             }
 
-            // Try MCP sampling first (proper protocol), fall back to clipboard paste
-            var sentViaMcp = false;
-            if (_mcpServer != null && _mcpServer.Clients.Any(c => c.Capabilities?.SupportsSampling == true))
+            // Try MCP first — if any MCP client is connected, send notification (no clipboard paste)
+            var hasMcpClient = _mcpServer != null && _mcpServer.Clients.Any(c => c.IsInitialized);
+            if (hasMcpClient)
             {
                 try
                 {
-                    Log("Sending via MCP sampling/createMessage");
-                    var result = await _mcpServer.BroadcastSamplingAsync(text, TimeSpan.FromSeconds(30));
-                    if (result != null)
-                    {
-                        sentViaMcp = true;
-                        Log($"MCP response: {result.Content?.Text?[..Math.Min(60, result.Content.Text.Length)] ?? "null"}");
-                        OnSpeechBubble?.Invoke(text, "MCP");
-                    }
+                    Log("Sending via MCP notification");
+                    await _mcpServer!.BroadcastNotificationAsync("notifications/voice_transcription", new { text });
+                    Log("MCP notification sent — skipping clipboard paste");
+                    OnSpeechBubble?.Invoke(text, "MCP");
                 }
                 catch (Exception mcpEx)
                 {
-                    Log($"MCP sampling failed: {mcpEx.Message}");
+                    Log($"MCP notification failed: {mcpEx.Message}, falling back to clipboard paste");
+                    hasMcpClient = false; // fall through to clipboard
                 }
             }
 
-            if (!sentViaMcp)
+            if (!hasMcpClient)
             {
                 // Send to target session via clipboard paste
                 var target = _sessionManager.GetTargetSession();
