@@ -32,7 +32,7 @@ public class SessionDetector
                 "-e \"tell application \\\"System Events\\\" to get name of first application process whose frontmost is true\"")
                 .Trim();
 
-            var terminalApps = new[] { "Terminal", "iTerm2", "Alacritty", "kitty", "WezTerm", "Hyper" };
+            var terminalApps = new[] { "Terminal", "iTerm2", "Alacritty", "kitty", "WezTerm", "Hyper", "Ghostty" };
             if (!terminalApps.Any(app => frontApp.Contains(app, StringComparison.OrdinalIgnoreCase)))
                 return null;
 
@@ -204,10 +204,31 @@ public class SessionDetector
     {
         try
         {
-            var output = RunCommand("ps", $"-p {pid} -o tty=");
-            return output.Trim().Length > 0 ? "Terminal" : null;
+            // Walk up the process tree to find the terminal emulator
+            var output = RunCommand("ps", $"-p {pid} -o ppid=").Trim();
+            if (int.TryParse(output, out var ppid))
+            {
+                var parentCmd = RunCommand("ps", $"-p {ppid} -o comm=").Trim();
+                // Keep walking up if parent is login/zsh/bash
+                var shells = new[] { "login", "zsh", "bash", "sh", "fish" };
+                while (shells.Any(s => parentCmd.EndsWith(s)))
+                {
+                    output = RunCommand("ps", $"-p {ppid} -o ppid=").Trim();
+                    if (!int.TryParse(output, out ppid)) break;
+                    parentCmd = RunCommand("ps", $"-p {ppid} -o comm=").Trim();
+                }
+                // Map known terminal emulator process names to app names
+                if (parentCmd.Contains("ghostty", StringComparison.OrdinalIgnoreCase)) return "Ghostty";
+                if (parentCmd.Contains("iterm", StringComparison.OrdinalIgnoreCase)) return "iTerm2";
+                if (parentCmd.Contains("alacritty", StringComparison.OrdinalIgnoreCase)) return "Alacritty";
+                if (parentCmd.Contains("kitty", StringComparison.OrdinalIgnoreCase)) return "kitty";
+                if (parentCmd.Contains("wezterm", StringComparison.OrdinalIgnoreCase)) return "WezTerm";
+                if (parentCmd.Contains("Terminal", StringComparison.OrdinalIgnoreCase)) return "Terminal";
+                return parentCmd; // return whatever it is
+            }
+            return "Terminal";
         }
-        catch { return null; }
+        catch { return "Terminal"; }
     }
 
     private List<CopilotSession> DetectLinuxSessions()
