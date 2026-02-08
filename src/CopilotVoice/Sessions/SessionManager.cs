@@ -40,6 +40,16 @@ public class SessionManager : IDisposable
 
     public void StartWatching(int pollIntervalMs = 500)
     {
+        // Default to first available session if none set
+        if (_currentTarget == null)
+        {
+            var sessions = _detector.GetCachedSessions();
+            if (sessions.Count == 0)
+                sessions = _detector.DetectSessions();
+            if (sessions.Count > 0)
+                UpdateTarget(sessions[0]);
+        }
+
         _watchCts = new CancellationTokenSource();
         _ = WatchLoopAsync(pollIntervalMs, _watchCts.Token);
     }

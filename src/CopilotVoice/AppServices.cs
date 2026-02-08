@@ -214,6 +214,7 @@ public sealed class AppServices : IDisposable
             var target = _sessionManager.GetTargetSession();
             if (target != null && _inputSender != null)
             {
+                Log($"Sending to {target.Label} (PID:{target.ProcessId}, app:{target.TerminalApp})");
                 await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
                 Log($"Sent to {target.Label}");
                 OnSpeechBubble?.Invoke(text, target.Label);
@@ -222,7 +223,7 @@ public sealed class AppServices : IDisposable
             }
             else
             {
-                Log("No target session");
+                Log($"No target session (target={target?.Label}, sender={_inputSender?.GetType().Name})");
             }
 
             OnStateChanged?.Invoke("Ready");
