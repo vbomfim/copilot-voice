@@ -135,12 +135,9 @@ public sealed class AppServices : IDisposable
             {
                 try
                 {
-                    if (_tts != null)
-                    {
-                        OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
-                        await _tts.SpeakAsync(msg.Text);
-                        OnSpeechBubble?.Invoke(null, null);
-                    }
+                    OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
+                    await SayAsync(msg.Text);
+                    OnSpeechBubble?.Invoke(null, null);
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
@@ -240,18 +237,18 @@ public sealed class AppServices : IDisposable
                 OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
             }
 
-            // Brief TTS confirmation
-            if (_tts != null)
+            // Brief TTS confirmation via macOS say (Azure SDK hangs in Avalonia)
+            _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _tts.SpeakAsync("Got it.");
+                    await SayAsync("Got it.");
                 }
                 catch (Exception ttsEx)
                 {
                     Log($"TTS confirmation failed: {ttsEx.Message}");
                 }
-            }
+            });
 
             await Task.Delay(2000);
             OnSpeechBubble?.Invoke(null, null);
@@ -268,6 +265,23 @@ public sealed class AppServices : IDisposable
     {
         Console.Error.WriteLine($"[copilot-voice] {msg}");
         OnLog?.Invoke(msg);
+    }
+
+    private static async Task SayAsync(string text)
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "say",
+                Arguments = $"\"{text.Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            process.Start();
+            await process.WaitForExitAsync();
+        }
     }
 
     private static async Task CopyToClipboardAsync(string text)
