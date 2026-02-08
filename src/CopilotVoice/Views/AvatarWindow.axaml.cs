@@ -12,6 +12,9 @@ public partial class AvatarWindow : Window
     private bool _isDragging;
     private PixelPoint _dragStart;
 
+    public event Action<bool>? OnTopmostChanged;
+    public event Action<bool>? OnVisibilityChanged;
+
     public AvatarWindow()
     {
         InitializeComponent();
@@ -20,17 +23,22 @@ public partial class AvatarWindow : Window
         AvatarPixel.SetPixelSize(14);
         AvatarPixel.SetFrame(PixelAvatarData.GetFrame(AvatarExpression.Normal));
 
-        // Position bottom-right of screen
+        // Position bottom-right of screen (defer to let SizeToContent resolve)
         Opened += (_, _) =>
         {
-            var screen = Screens.Primary;
-            if (screen != null)
+            Dispatcher.UIThread.Post(() =>
             {
-                var workArea = screen.WorkingArea;
-                Position = new PixelPoint(
-                    (int)(workArea.Right - Width - 20),
-                    (int)(workArea.Bottom - Height - 20));
-            }
+                var screen = Screens.Primary;
+                if (screen != null)
+                {
+                    var workArea = screen.WorkingArea;
+                    var h = Bounds.Height > 0 ? Bounds.Height : 300;
+                    var w = Bounds.Width > 0 ? Bounds.Width : 280;
+                    Position = new PixelPoint(
+                        (int)(workArea.Right - w - 20),
+                        (int)(workArea.Bottom - h - 20));
+                }
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
         };
 
         // Drag to move (since no title bar)
@@ -166,21 +174,27 @@ public partial class AvatarWindow : Window
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
     }
 
-    private string DoShow() { Show(); return "Window shown"; }
-    private string DoHide() { Hide(); return "Window hidden"; }
-    private string DoTopmost(bool on)
+    private string DoShow() { Show(); OnVisibilityChanged?.Invoke(true); return "Window shown"; }
+    private string DoHide() { Hide(); OnVisibilityChanged?.Invoke(false); return "Window hidden"; }
+    public void SetTopmost(bool on)
     {
         Topmost = on;
         PinButton.Content = on ? "📌" : "📍";
+        OnTopmostChanged?.Invoke(on);
+    }
+    private string DoTopmost(bool on)
+    {
+        SetTopmost(on);
         return $"Topmost: {on}";
     }
     private void OnPinClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        DoTopmost(!Topmost);
+        SetTopmost(!Topmost);
     }
     private void OnHideClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         Hide();
+        OnVisibilityChanged?.Invoke(false);
     }
     private string DoMove(int? x, int? y, string? position)
     {
@@ -189,13 +203,15 @@ public partial class AvatarWindow : Window
             var screen = Screens.Primary;
             if (screen == null) return "No screen";
             var wa = screen.WorkingArea;
+            var w = Bounds.Width > 0 ? Bounds.Width : 280;
+            var h = Bounds.Height > 0 ? Bounds.Height : 300;
             var (px, py) = position switch
             {
                 "top-left" => (wa.X + 20, wa.Y + 20),
-                "top-right" => ((int)(wa.Right - Width - 20), wa.Y + 20),
-                "bottom-left" => (wa.X + 20, (int)(wa.Bottom - Height - 20)),
-                "bottom-right" => ((int)(wa.Right - Width - 20), (int)(wa.Bottom - Height - 20)),
-                "center" => ((int)(wa.X + (wa.Width - Width) / 2), (int)(wa.Y + (wa.Height - Height) / 2)),
+                "top-right" => ((int)(wa.Right - w - 20), wa.Y + 20),
+                "bottom-left" => (wa.X + 20, (int)(wa.Bottom - h - 20)),
+                "bottom-right" => ((int)(wa.Right - w - 20), (int)(wa.Bottom - h - 20)),
+                "center" => ((int)(wa.X + (wa.Width - w) / 2), (int)(wa.Y + (wa.Height - h) / 2)),
                 _ => (-1, -1)
             };
             if (px < 0) return $"Unknown position: {position}";

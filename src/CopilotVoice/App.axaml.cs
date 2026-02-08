@@ -15,6 +15,7 @@ public class App : Application
     private NativeMenuItem? _pomodoroItem;
     private NativeMenuItem? _sessionsItem;
     private NativeMenuItem? _lockToggleItem;
+    private NativeMenuItem? _topmostItem;
 
     public override void Initialize()
     {
@@ -170,7 +171,7 @@ public class App : Application
         menu.Add(new NativeMenuItemSeparator());
 
         // Actions
-        var toggleAvatarItem = new NativeMenuItem("👁️  Toggle Avatar");
+        var toggleAvatarItem = new NativeMenuItem("👁️  Hide Avatar");
         toggleAvatarItem.Click += (_, _) =>
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -178,9 +179,15 @@ public class App : Application
                 try
                 {
                     if (_avatarWindow?.IsVisible == true)
+                    {
                         _avatarWindow.Hide();
+                        toggleAvatarItem.Header = "👁️  Show Avatar";
+                    }
                     else
+                    {
                         _avatarWindow?.Show();
+                        toggleAvatarItem.Header = "👁️  Hide Avatar";
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -190,8 +197,8 @@ public class App : Application
         };
         menu.Add(toggleAvatarItem);
 
-        var topmostItem = new NativeMenuItem("📌 Always on Top ✓");
-        topmostItem.Click += (_, _) =>
+        _topmostItem = new NativeMenuItem("📌 Always on Top ✓");
+        _topmostItem.Click += (_, _) =>
         {
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
@@ -199,9 +206,7 @@ public class App : Application
                 {
                     if (_avatarWindow != null)
                     {
-                        _avatarWindow.Topmost = !_avatarWindow.Topmost;
-                        topmostItem.Header = _avatarWindow.Topmost
-                            ? "📌 Always on Top ✓" : "📌 Always on Top";
+                        _avatarWindow.SetTopmost(!_avatarWindow.Topmost);
                     }
                 }
                 catch (Exception ex)
@@ -210,7 +215,27 @@ public class App : Application
                 }
             });
         };
-        menu.Add(topmostItem);
+        menu.Add(_topmostItem);
+
+        // Sync tray menu when window pin button changes topmost
+        if (_avatarWindow != null)
+        {
+            _avatarWindow.OnTopmostChanged += (on) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_topmostItem != null)
+                        _topmostItem.Header = on ? "📌 Always on Top ✓" : "📌 Always on Top";
+                });
+            };
+            _avatarWindow.OnVisibilityChanged += (visible) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    toggleAvatarItem.Header = visible ? "👁️  Hide Avatar" : "👁️  Show Avatar";
+                });
+            };
+        }
 
         var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
         refreshItem.Click += (_, _) => _services?.RefreshSessions();
