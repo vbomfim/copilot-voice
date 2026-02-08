@@ -11,6 +11,9 @@ public class PushToTalkRecognizer : IDisposable
     private readonly AppConfig _config;
     private readonly AzureAuthProvider _authProvider;
     private readonly List<string> _recognizedSegments = new();
+    private readonly object _segmentsLock = new();
+    private int _sessionId;
+    private TaskCompletionSource? _sessionStoppedTcs;
     private bool _initialized;
     private bool _disposed;
 
@@ -52,7 +55,10 @@ public class PushToTalkRecognizer : IDisposable
             if (e.Result.Reason == ResultReason.RecognizedSpeech && !string.IsNullOrEmpty(e.Result.Text))
             {
                 OnLog?.Invoke($"STT final segment: {e.Result.Text}");
-                _recognizedSegments.Add(e.Result.Text);
+                lock (_segmentsLock)
+                {
+                    _recognizedSegments.Add(e.Result.Text);
+                }
             }
             else if (e.Result.Reason == ResultReason.NoMatch)
             {
@@ -64,7 +70,10 @@ public class PushToTalkRecognizer : IDisposable
             OnLog?.Invoke("STT: session started");
 
         _recognizer.SessionStopped += (s, e) =>
+        {
             OnLog?.Invoke("STT: session stopped");
+            _sessionStoppedTcs?.TrySetResult();
+        };
 
         _recognizer.Canceled += (s, e) =>
         {
@@ -79,7 +88,9 @@ public class PushToTalkRecognizer : IDisposable
 
     public async Task StartRecordingAsync()
     {
-        _recognizedSegments.Clear();
+        Interlocked.Increment(ref _sessionId);
+        lock (_segmentsLock) { _recognizedSegments.Clear(); }
+        _sessionStoppedTcs = new TaskCompletionSource();
         EnsureInitialized();
 
         await _recognizer!.StartContinuousRecognitionAsync();
@@ -110,8 +121,22 @@ public class PushToTalkRecognizer : IDisposable
             OnLog?.Invoke($"STT stop error: {ex.Message}");
         }
 
-        var result = string.Join(" ", _recognizedSegments);
-        OnLog?.Invoke($"STT result: \"{result}\" ({_recognizedSegments.Count} segments)");
+        // Wait for SessionStopped event — Azure delivers final segments before this fires
+        if (_sessionStoppedTcs != null)
+        {
+            if (await Task.WhenAny(_sessionStoppedTcs.Task, Task.Delay(3000)) != _sessionStoppedTcs.Task)
+                OnLog?.Invoke("STT: SessionStopped timed out after 3s");
+        }
+
+        string[] segments;
+        lock (_segmentsLock)
+        {
+            segments = _recognizedSegments.ToArray();
+            _recognizedSegments.Clear();
+        }
+
+        var result = string.Join(" ", segments);
+        OnLog?.Invoke($"STT result: \"{result}\" ({segments.Length} segments)");
         if (!string.IsNullOrEmpty(result))
             OnFinalResult?.Invoke(result);
         return result;
