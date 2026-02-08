@@ -7,11 +7,14 @@ namespace CopilotVoice.Views;
 public partial class AvatarWindow : Window
 {
     private AppServices? _services;
-    private IAvatarTheme? _theme;
 
     public AvatarWindow()
     {
         InitializeComponent();
+
+        // Show initial frame
+        AvatarPixel.SetPixelSize(14);
+        AvatarPixel.SetFrame(PixelAvatarData.GetFrame(AvatarExpression.Normal));
 
         // Position bottom-right of screen
         Opened += (_, _) =>
@@ -30,7 +33,6 @@ public partial class AvatarWindow : Window
     public void SetServices(AppServices services)
     {
         _services = services;
-        _theme = services.AvatarState.GetThemeRenderer();
 
         services.Animator.OnExpressionChanged += expr =>
             Dispatcher.UIThread.Post(() => UpdateFace(expr));
@@ -41,14 +43,14 @@ public partial class AvatarWindow : Window
         services.OnSpeechBubble += (text, label) =>
             Dispatcher.UIThread.Post(() =>
             {
-                SpeechBubble.Text = string.IsNullOrEmpty(text) ? "" : $"💬 {text}";
+                SpeechBubble.Text = string.IsNullOrEmpty(text) ? "" : $"\U0001f4ac {text}";
                 if (!string.IsNullOrEmpty(label))
-                    SessionLabel.Text = $"📂 {label}";
+                    SessionLabel.Text = $"\U0001f4c2 {label}";
             });
 
         services.OnTargetSession += label =>
             Dispatcher.UIThread.Post(() =>
-                SessionLabel.Text = $"📂 {label ?? "no session"}");
+                SessionLabel.Text = $"\U0001f4c2 {label ?? "no session"}");
 
         services.OnTimerTick += (phase, remaining) =>
             Dispatcher.UIThread.Post(() =>
@@ -57,34 +59,31 @@ public partial class AvatarWindow : Window
                     TimerLabel.Text = "";
                 else
                 {
-                    var icon = phase == "Work" ? "🔨" : "☕";
+                    var icon = phase == "Work" ? "\U0001f528" : "\u2615";
                     TimerLabel.Text = $"{icon} {phase} {remaining:mm\\:ss}";
                 }
             });
 
         services.OnLog += msg =>
-            Dispatcher.UIThread.Post(() => AppendLog(msg));
+            Dispatcher.UIThread.Post(() => System.Console.WriteLine($"[UI] {msg}"));
 
-        // Show hotkey
-        HotkeyLabel.Text = $"⌨️ {services.Config.Hotkey}";
+        HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
     }
 
     private void UpdateFace(AvatarExpression expression)
     {
-        if (_theme == null) return;
-        var lines = _theme.RenderFrame(expression);
-        AvatarFace.Text = string.Join("\n", lines);
+        AvatarPixel.SetFrame(PixelAvatarData.GetFrame(expression));
     }
 
     private void UpdateStatus(string state)
     {
         StatusBadge.Text = state switch
         {
-            "Recording" => "🔴 Recording...",
-            "Transcribing" => "⏳ Transcribing...",
-            "Speaking" => "🔊 Speaking",
-            "Error" => "⚠️ Error",
-            _ => "● Ready"
+            "Recording" => "\U0001f534 Recording...",
+            "Transcribing" => "\u23f3 Transcribing...",
+            "Speaking" => "\U0001f50a Speaking",
+            "Error" => "\u26a0\ufe0f Error",
+            _ => "\u25cf Ready"
         };
 
         StatusBadge.Foreground = state switch
@@ -95,11 +94,5 @@ public partial class AvatarWindow : Window
             "Error" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FAB387")),
             _ => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#A6E3A1"))
         };
-    }
-
-    private void AppendLog(string msg)
-    {
-        // Log output goes to console only — no visible log area in the UI
-        System.Console.WriteLine($"[UI] {msg}");
     }
 }

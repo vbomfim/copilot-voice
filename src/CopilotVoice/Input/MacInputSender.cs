@@ -44,7 +44,7 @@ public class MacInputSender : IInputSender
         var escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
         var enterLine = pressEnter
-            ? "\n    delay 0.05\n    keystroke return\n    delay 0.05\n    keystroke return"
+            ? "\n    delay 0.2\n    key code 36\n    delay 0.15\n    key code 36"
             : "";
 
         // For apps with AppleScript support (Terminal.app, iTerm2),
@@ -56,7 +56,8 @@ set the clipboard to ""{escaped}""
 tell application ""{app}"" to activate
 delay 0.15
 tell application ""System Events""
-    keystroke ""v"" using command down{enterLine}
+    keystroke ""v"" using command down
+    delay 0.3{enterLine}
 end tell
 -- Restore clipboard after brief delay
 delay 0.1
