@@ -46,8 +46,12 @@ public class SessionManager : IDisposable
             var sessions = _detector.GetCachedSessions();
             if (sessions.Count == 0)
                 sessions = _detector.DetectSessions();
-            if (sessions.Count > 0)
-                UpdateTarget(sessions[0]);
+            // Prefer sessions that aren't copilot-voice itself
+            var candidate = sessions.FirstOrDefault(s =>
+                !s.Label.Contains("copilot-voice", StringComparison.OrdinalIgnoreCase))
+                ?? sessions.FirstOrDefault();
+            if (candidate != null)
+                UpdateTarget(candidate);
         }
 
         _watchCts = new CancellationTokenSource();

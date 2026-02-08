@@ -39,18 +39,12 @@ public class MacInputSender : IInputSender
 
     private static string BuildAppleScript(CopilotSession session, string escapedText, bool pressEnter)
     {
-        var app = session.TerminalApp?.ToLowerInvariant() ?? string.Empty;
-
-        if (app.Contains("iterm"))
-        {
-            var enterClause = pressEnter ? " & \"\\n\"" : string.Empty;
-            return $"tell application \"iTerm2\" to tell current session of current window to write text \"{escapedText}\"{enterClause}";
-        }
-
-        // Default: Terminal.app
+        // Use System Events keystroke — types text into the frontmost app's
+        // focused text field without executing it as a shell command.
+        // This is safer than "do script" which runs text as a command.
         if (pressEnter)
         {
-            return $"tell application \"Terminal\" to do script \"{escapedText}\" in front window";
+            return $"tell application \"System Events\" to keystroke \"{escapedText}\" & return";
         }
 
         return $"tell application \"System Events\" to keystroke \"{escapedText}\"";
