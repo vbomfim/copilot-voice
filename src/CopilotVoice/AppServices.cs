@@ -228,10 +228,18 @@ public sealed class AppServices : IDisposable
             var target = _sessionManager.GetTargetSession();
             if (target != null && _inputSender != null)
             {
-                Log($"Sending to {target.Label} (PID:{target.ProcessId}, app:{target.TerminalApp})");
-                await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                Log($"Sent to {target.Label}");
-                OnSpeechBubble?.Invoke(text, target.Label);
+                try
+                {
+                    Log($"Sending to {target.Label}");
+                    await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
+                    Log($"Sent to {target.Label}");
+                    OnSpeechBubble?.Invoke(text, target.Label);
+                }
+                catch (Exception sendEx)
+                {
+                    Log($"Send failed: {sendEx.Message} — text is in clipboard");
+                    OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
+                }
             }
             else
             {
@@ -239,17 +247,11 @@ public sealed class AppServices : IDisposable
                 OnSpeechBubble?.Invoke($"📋 {text}", "clipboard");
             }
 
-            // Brief TTS confirmation via macOS say (Azure SDK hangs in Avalonia)
+            // Speech bubble auto-clear after delay
             _ = Task.Run(async () =>
             {
-                try
-                {
-                    await SayAsync("Got it.");
-                }
-                catch (Exception ttsEx)
-                {
-                    Log($"TTS confirmation failed: {ttsEx.Message}");
-                }
+                await Task.Delay(3000);
+                OnSpeechBubble?.Invoke(null, null);
             });
 
             OnStateChanged?.Invoke("Ready");

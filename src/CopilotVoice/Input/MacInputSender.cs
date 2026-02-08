@@ -12,8 +12,10 @@ public class MacInputSender : IInputSender
         ArgumentNullException.ThrowIfNull(session);
         ArgumentNullException.ThrowIfNull(text);
 
-        var escaped = EscapeForAppleScript(text);
-        var script = BuildAppleScript(session, escaped, pressEnter);
+        // Strategy: activate Terminal, then use clipboard paste
+        // This avoids both "do script" (runs as command) and
+        // "keystroke" (types into wrong window) issues.
+        var script = BuildClipboardPasteScript(session, text, pressEnter);
 
         using var process = new Process();
         process.StartInfo = new ProcessStartInfo
@@ -37,23 +39,20 @@ public class MacInputSender : IInputSender
             throw new InvalidOperationException($"osascript failed (exit {process.ExitCode}): {stderr}");
     }
 
-    private static string BuildAppleScript(CopilotSession session, string escapedText, bool pressEnter)
+    private static string BuildClipboardPasteScript(CopilotSession session, string text, bool pressEnter)
     {
-        // Use System Events keystroke — types text into the frontmost app's
-        // focused text field without executing it as a shell command.
-        // This is safer than "do script" which runs text as a command.
-        if (pressEnter)
-        {
-            return $"tell application \"System Events\" to keystroke \"{escapedText}\" & return";
-        }
+        var app = session.TerminalApp?.ToLowerInvariant() ?? "terminal";
+        var terminalApp = app.Contains("iterm") ? "iTerm2" : "Terminal";
+        var escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
-        return $"tell application \"System Events\" to keystroke \"{escapedText}\"";
-    }
+        // Set clipboard, activate terminal, paste, optionally press enter
+        var enterLine = pressEnter
+            ? "\ntell application \"System Events\" to keystroke return"
+            : "";
 
-    private static string EscapeForAppleScript(string text)
-    {
-        return text
-            .Replace("\\", "\\\\")
-            .Replace("\"", "\\\"");
+        return $@"set the clipboard to ""{escaped}""
+tell application ""{terminalApp}"" to activate
+delay 0.1
+tell application ""System Events"" to keystroke ""v"" using command down{enterLine}";
     }
 }
