@@ -14,6 +14,7 @@ public class AppConfig
     // Push-to-talk
     public string Hotkey { get; set; } = "Alt+Space";
     public string Language { get; set; } = "en-US";
+    public List<string>? CustomPhrases { get; set; }
 
     // Session
     public string? DefaultSessionId { get; set; }

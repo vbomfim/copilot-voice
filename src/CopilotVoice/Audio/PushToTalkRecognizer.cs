@@ -34,20 +34,28 @@ public class PushToTalkRecognizer : IDisposable
 
         var (key, region) = _authProvider.Resolve(_config);
         var speechConfig = SpeechConfig.FromSubscription(key, region);
-        speechConfig.SpeechRecognitionLanguage = _config.Language;
+
+        // Use auto language detection for multilingual speakers
+        var autoDetectConfig = AutoDetectSourceLanguageConfig.FromLanguages(
+            new[] { _config.Language, "pt-BR", "es-ES" });
+
         // Request detailed results for better accuracy
         speechConfig.OutputFormat = OutputFormat.Detailed;
-        // Enable profanity removal to avoid weird substitutions
-        speechConfig.SetProfanity(ProfanityOption.Removed);
+        // Allow profanity (raw mode gives more accurate transcription)
+        speechConfig.SetProfanity(ProfanityOption.Raw);
+        // Enable dictation mode for natural speech (pauses, punctuation)
+        speechConfig.EnableDictation();
 
-        OnLog?.Invoke($"STT: connecting to {region}, lang={_config.Language}");
+        OnLog?.Invoke($"STT: connecting to {region}, lang={_config.Language} (auto-detect enabled)");
 
         _audioConfig = AudioConfig.FromDefaultMicrophoneInput();
-        _recognizer = new SpeechRecognizer(speechConfig, _audioConfig);
+        _recognizer = new SpeechRecognizer(speechConfig, autoDetectConfig, _audioConfig);
 
         // Add phrase hints for common terms to improve accuracy
         var phraseList = PhraseListGrammar.FromRecognizer(_recognizer);
+        // Dev tools & platforms
         phraseList.AddPhrase("Copilot");
+        phraseList.AddPhrase("Copilot Voice");
         phraseList.AddPhrase("CLI");
         phraseList.AddPhrase("MCP");
         phraseList.AddPhrase("GitHub");
@@ -69,6 +77,36 @@ public class PushToTalkRecognizer : IDisposable
         phraseList.AddPhrase("terminal");
         phraseList.AddPhrase("tray app");
         phraseList.AddPhrase("hotkey");
+        // UI & app terms
+        phraseList.AddPhrase("floating window");
+        phraseList.AddPhrase("avatar");
+        phraseList.AddPhrase("tray icon");
+        phraseList.AddPhrase("Ctrl+Space");
+        phraseList.AddPhrase("push to talk");
+        phraseList.AddPhrase("transcription");
+        phraseList.AddPhrase("speech to text");
+        phraseList.AddPhrase("text to speech");
+        // C# / .NET
+        phraseList.AddPhrase("Avalonia");
+        phraseList.AddPhrase("NuGet");
+        phraseList.AddPhrase("SharpHook");
+        phraseList.AddPhrase("CGEvent");
+        phraseList.AddPhrase("P/Invoke");
+        phraseList.AddPhrase("Azure");
+        phraseList.AddPhrase("XAML");
+        // Common commands
+        phraseList.AddPhrase("build it");
+        phraseList.AddPhrase("run it");
+        phraseList.AddPhrase("fix it");
+        phraseList.AddPhrase("deploy");
+        phraseList.AddPhrase("restart");
+
+        // Load custom phrases from config if available
+        if (_config.CustomPhrases != null)
+        {
+            foreach (var phrase in _config.CustomPhrases)
+                phraseList.AddPhrase(phrase);
+        }
 
         _recognizer.Recognizing += (s, e) =>
         {
