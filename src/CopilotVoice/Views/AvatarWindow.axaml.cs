@@ -11,6 +11,8 @@ public partial class AvatarWindow : Window
     private AppServices? _services;
     private bool _isDragging;
     private PixelPoint _dragStart;
+    private bool _isRecordBlinking;
+    private CancellationTokenSource? _blinkCts;
 
     private bool _firstOpen = true;
     private PixelPoint _savedPosition;
@@ -72,18 +74,18 @@ public partial class AvatarWindow : Window
             }
         };
 
-        // Push-to-talk button (hold to record)
-        MicButton.AddHandler(Avalonia.Input.InputElement.PointerPressedEvent, (_, e) =>
+        // Record button (hold to record)
+        RecordButton.AddHandler(Avalonia.Input.InputElement.PointerPressedEvent, (_, e) =>
         {
             _services?.OnMicButtonDown();
-            MicButton.Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#F38BA8"));
+            StartRecordBlink();
             e.Handled = true;
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
-        MicButton.AddHandler(Avalonia.Input.InputElement.PointerReleasedEvent, (_, e) =>
+        RecordButton.AddHandler(Avalonia.Input.InputElement.PointerReleasedEvent, (_, e) =>
         {
             _services?.OnMicButtonUp();
-            MicButton.Background = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#3B3B5C"));
+            StopRecordBlink();
             e.Handled = true;
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
@@ -281,5 +283,60 @@ public partial class AvatarWindow : Window
             "Error" => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#FAB387")),
             _ => new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#A6E3A1"))
         };
+
+        // Sync record button with hotkey-triggered recording
+        if (state == "Recording" && !_isRecordBlinking)
+            StartRecordBlink();
+        else if (state != "Recording" && _isRecordBlinking)
+            StopRecordBlink();
+    }
+
+    private void StartRecordBlink()
+    {
+        if (_isRecordBlinking) return;
+        _isRecordBlinking = true;
+        _blinkCts = new CancellationTokenSource();
+        var ct = _blinkCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            bool bright = true;
+            while (!ct.IsCancellationRequested)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    try
+                    {
+                        RecordDot.Fill = new Avalonia.Media.SolidColorBrush(
+                            Avalonia.Media.Color.Parse(bright ? "#FF4040" : "#8B0000"));
+                        RecordDot.Opacity = bright ? 1.0 : 0.4;
+                        RecordButton.Background = new Avalonia.Media.SolidColorBrush(
+                            Avalonia.Media.Color.Parse("#5C2020"));
+                    }
+                    catch { }
+                });
+                bright = !bright;
+                try { await Task.Delay(400, ct); } catch { break; }
+            }
+        });
+    }
+
+    private void StopRecordBlink()
+    {
+        _isRecordBlinking = false;
+        _blinkCts?.Cancel();
+        _blinkCts = null;
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                RecordDot.Fill = new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.Parse("#F38BA8"));
+                RecordDot.Opacity = 0.6;
+                RecordButton.Background = new Avalonia.Media.SolidColorBrush(
+                    Avalonia.Media.Color.Parse("#3B3B5C"));
+            }
+            catch { }
+        });
     }
 }

@@ -84,13 +84,16 @@
             <Border Grid.Row="5" Padding="10,6" Background="#2D2D44"
                     CornerRadius="0,0,12,12">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <!-- Push-to-talk button -->
-                    <Button x:Name="MicButton" Grid.Column="0" Content="🎙️"
-                            FontSize="14" Padding="6,2" Margin="0,0,8,0"
-                            Background="#3B3B5C" Foreground="#CDD6F4"
-                            BorderThickness="0" CornerRadius="6"
-                            VerticalAlignment="Center"
-                            ToolTip.Tip="Hold to talk"/>
+                    <!-- Record button (red circle) -->
+                    <Border x:Name="RecordButton" Grid.Column="0"
+                            Width="28" Height="28" CornerRadius="14"
+                            Background="#3B3B5C" Margin="0,0,8,0"
+                            VerticalAlignment="Center" Cursor="Hand"
+                            ToolTip.Tip="Hold to talk">
+                        <Ellipse x:Name="RecordDot" Width="14" Height="14"
+                                 Fill="#F38BA8" HorizontalAlignment="Center"
+                                 VerticalAlignment="Center" Opacity="0.6"/>
+                    </Border>
                     <TextBlock x:Name="HotkeyLabel" Grid.Column="1" Text="⌨️ Ctrl+Space"
                                FontSize="10" Foreground="#6C7086" VerticalAlignment="Center"/>
                     <TextBlock x:Name="TimerLabel" Grid.Column="2" Text=""
