@@ -12,6 +12,9 @@ public partial class AvatarWindow : Window
     private bool _isDragging;
     private PixelPoint _dragStart;
 
+    private bool _firstOpen = true;
+    private PixelPoint _savedPosition;
+
     public event Action<bool>? OnTopmostChanged;
     public event Action<bool>? OnVisibilityChanged;
 
@@ -23,22 +26,21 @@ public partial class AvatarWindow : Window
         AvatarPixel.SetPixelSize(14);
         AvatarPixel.SetFrame(PixelAvatarData.GetFrame(AvatarExpression.Normal));
 
-        // Position bottom-right of screen (defer to let SizeToContent resolve)
+        // Position bottom-right on first open only
         Opened += (_, _) =>
         {
-            Dispatcher.UIThread.Post(() =>
+            if (_firstOpen)
             {
-                var screen = Screens.Primary;
-                if (screen != null)
+                _firstOpen = false;
+                Dispatcher.UIThread.Post(() =>
                 {
-                    var workArea = screen.WorkingArea;
-                    var h = Bounds.Height > 0 ? Bounds.Height : 300;
-                    var w = Bounds.Width > 0 ? Bounds.Width : 280;
-                    Position = new PixelPoint(
-                        (int)(workArea.Right - w - 20),
-                        (int)(workArea.Bottom - h - 20));
-                }
-            }, Avalonia.Threading.DispatcherPriority.Loaded);
+                    ResetPosition();
+                }, Avalonia.Threading.DispatcherPriority.Loaded);
+            }
+            else
+            {
+                Position = _savedPosition;
+            }
         };
 
         // Drag to move (since no title bar)
@@ -175,7 +177,7 @@ public partial class AvatarWindow : Window
     }
 
     private string DoShow() { Show(); OnVisibilityChanged?.Invoke(true); return "Window shown"; }
-    private string DoHide() { Hide(); OnVisibilityChanged?.Invoke(false); return "Window hidden"; }
+    private string DoHide() { _savedPosition = Position; Hide(); OnVisibilityChanged?.Invoke(false); return "Window hidden"; }
     public void SetTopmost(bool on)
     {
         Topmost = on;
@@ -191,8 +193,22 @@ public partial class AvatarWindow : Window
     {
         SetTopmost(!Topmost);
     }
+    public void ResetPosition()
+    {
+        var screen = Screens.Primary;
+        if (screen != null)
+        {
+            var workArea = screen.WorkingArea;
+            var w = Bounds.Width > 0 ? Bounds.Width : 280;
+            // Top-right, near macOS tray/menu bar
+            Position = new PixelPoint(
+                (int)(workArea.Right - w - 20),
+                workArea.Y + 10);
+        }
+    }
     private void OnHideClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
+        _savedPosition = Position;
         Hide();
         OnVisibilityChanged?.Invoke(false);
     }

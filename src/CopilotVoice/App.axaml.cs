@@ -39,11 +39,6 @@ public class App : Application
             {
                 var iconPath = System.IO.Path.Combine(
                     AppContext.BaseDirectory, "Assets", "tray-icon.png");
-                if (!System.IO.File.Exists(iconPath))
-                    iconPath = System.IO.Path.Combine(
-                        System.IO.Path.GetDirectoryName(
-                            System.Reflection.Assembly.GetExecutingAssembly().Location)!,
-                        "Assets", "tray-icon.png");
                 Console.WriteLine($"[copilot-voice] Tray icon path: {iconPath} (exists: {System.IO.File.Exists(iconPath)})");
                 if (System.IO.File.Exists(iconPath))
                     trayIconImage = new WindowIcon(iconPath);
@@ -236,6 +231,17 @@ public class App : Application
                 });
             };
         }
+
+        var resetPosItem = new NativeMenuItem("📍 Reset Position");
+        resetPosItem.Click += (_, _) =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                try { _avatarWindow?.ResetPosition(); }
+                catch (Exception ex) { Console.WriteLine($"[copilot-voice] Reset pos error: {ex.Message}"); }
+            });
+        };
+        menu.Add(resetPosItem);
 
         var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
         refreshItem.Click += (_, _) => _services?.RefreshSessions();

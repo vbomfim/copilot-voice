@@ -1,31 +1,32 @@
 #!/usr/bin/env bash
-# run.sh — Build, copy to /tmp, and launch copilot-voice with auto-restart.
+# run.sh — Build, publish as self-contained executable, and launch copilot-voice.
 # Usage: bash scripts/run.sh [--stop]
 set -euo pipefail
 
 APP_NAME="CopilotVoice"
-RUN_DIR="/tmp/copilot-voice-run"
+PUBLISH_DIR="/tmp/copilot-voice-publish"
 LOG_FILE="/tmp/copilot-voice.log"
 PID_FILE="/tmp/copilot-voice.pid"
-WATCHDOG_PID_FILE="/tmp/copilot-voice-watchdog.pid"
 DOTNET="/usr/local/share/dotnet/dotnet"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CSPROJ="$PROJECT_DIR/src/$APP_NAME/$APP_NAME.csproj"
 
-stop_app() {
-    # Stop watchdog
-    if [[ -f "$WATCHDOG_PID_FILE" ]]; then
-        local wpid
-        wpid=$(cat "$WATCHDOG_PID_FILE")
-        if ps -p "$wpid" > /dev/null 2>&1; then
-            echo "Stopping watchdog (PID $wpid)..."
-            kill "$wpid" 2>/dev/null || true
-        fi
-        rm -f "$WATCHDOG_PID_FILE"
+# Detect runtime identifier
+if [[ "$(uname)" == "Darwin" ]]; then
+    if [[ "$(uname -m)" == "arm64" ]]; then
+        RID="osx-arm64"
+    else
+        RID="osx-x64"
     fi
-    # Stop app
+elif [[ "$(uname)" == "Linux" ]]; then
+    RID="linux-x64"
+else
+    RID="win-x64"
+fi
+
+stop_app() {
     local pids
-    pids=$(ps aux | grep "[C]opilotVoice.dll" | awk '{print $2}')
+    pids=$(pgrep -f "$APP_NAME" 2>/dev/null || true)
     for p in $pids; do
         echo "Stopping PID $p..."
         kill "$p" 2>/dev/null || true
@@ -43,39 +44,28 @@ fi
 # Stop any running instance
 stop_app
 
-# Build
-echo "Building..."
-"$DOTNET" build "$CSPROJ" -c Debug -v q 2>&1 | tail -3
+# Publish self-contained
+echo "Publishing ($RID)..."
+"$DOTNET" publish "$CSPROJ" -c Release -r "$RID" --self-contained \
+    -p:PublishSingleFile=true -o "$PUBLISH_DIR" 2>&1 | tail -3
 
-# Copy to run dir (avoids rebuild-overwrites-running-binary crash)
-rm -rf "$RUN_DIR"
-mkdir -p "$RUN_DIR"
-cp -r "$PROJECT_DIR/src/$APP_NAME/bin/Debug/net10.0/"* "$RUN_DIR/"
+# Source env vars (Azure keys etc.)
+source ~/.zprofile 2>/dev/null || true
 
-# Launch with watchdog (auto-restart on crash)
-echo "Launching with watchdog..."
+# Launch
 echo "" > "$LOG_FILE"
-
-(
-    while true; do
-        cd "$RUN_DIR"
-        "$DOTNET" "$APP_NAME.dll" >> "$LOG_FILE" 2>&1
-        EXIT_CODE=$?
-        echo "[watchdog] Process exited with code $EXIT_CODE at $(date). Restarting in 2s..." >> "$LOG_FILE"
-        sleep 2
-    done
-) &
-WATCHDOG_PID=$!
-echo "$WATCHDOG_PID" > "$WATCHDOG_PID_FILE"
+cd "$PUBLISH_DIR"
+nohup "./$APP_NAME" >> "$LOG_FILE" 2>&1 &
+APP_PID=$!
+echo "$APP_PID" > "$PID_FILE"
 
 # Wait for app to start
 sleep 4
-APP_PID=$(ps aux | grep "[C]opilotVoice.dll" | awk '{print $2}' | head -1)
-if [[ -n "$APP_PID" ]]; then
-    echo "$APP_PID" > "$PID_FILE"
-    echo "✅ Running (PID $APP_PID, watchdog $WATCHDOG_PID)"
-    echo "Log: $LOG_FILE"
-    tail -5 "$LOG_FILE"
+if curl -s --max-time 2 http://localhost:7701/health | grep -q ok; then
+    echo "✅ Running (PID $APP_PID)"
+    echo "   Executable: $PUBLISH_DIR/$APP_NAME"
+    echo "   Log: $LOG_FILE"
+    tail -3 "$LOG_FILE"
 else
     echo "❌ Failed to start — check $LOG_FILE"
     tail -20 "$LOG_FILE"
