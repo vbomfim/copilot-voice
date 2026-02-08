@@ -321,40 +321,84 @@ public sealed class AppServices : IDisposable
 
     public static async Task SayStaticAsync(string text)
     {
-        if (OperatingSystem.IsMacOS())
+        var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.wav");
+        try
         {
-            var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.aiff");
-            try
+            // Try Azure TTS first (cross-platform)
+            var key = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
+            var region = Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION") ?? "centralus";
+
+            if (!string.IsNullOrEmpty(key))
             {
-                // Render to file first (avoids audio buffer clipping)
+                var speechConfig = Microsoft.CognitiveServices.Speech.SpeechConfig.FromSubscription(key, region);
+                speechConfig.SpeechSynthesisVoiceName = "en-US-JennyNeural";
+                using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromWavFileOutput(tmpFile);
+                using var synthesizer = new Microsoft.CognitiveServices.Speech.SpeechSynthesizer(speechConfig, audioConfig);
+                var result = await synthesizer.SpeakTextAsync(text);
+                if (result.Reason == Microsoft.CognitiveServices.Speech.ResultReason.SynthesizingAudioCompleted)
+                {
+                    await PlayAudioFileAsync(tmpFile);
+                    return;
+                }
+                Console.Error.WriteLine($"[TTS] Azure failed: {result.Reason}");
+            }
+
+            // Fallback: macOS say command
+            if (OperatingSystem.IsMacOS())
+            {
+                var aiffFile = Path.ChangeExtension(tmpFile, ".aiff");
                 using var sayProcess = new System.Diagnostics.Process();
                 sayProcess.StartInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "say",
-                    Arguments = $"-o \"{tmpFile}\" \"{text.Replace("\"", "\\\"")}\"",
+                    Arguments = $"-o \"{aiffFile}\" \"{text.Replace("\"", "\\\"")}\"",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                 };
                 sayProcess.Start();
                 await sayProcess.WaitForExitAsync();
-
-                // Play the rendered audio
-                using var playProcess = new System.Diagnostics.Process();
-                playProcess.StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "afplay",
-                    Arguments = $"\"{tmpFile}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                playProcess.Start();
-                await playProcess.WaitForExitAsync();
-            }
-            finally
-            {
-                try { File.Delete(tmpFile); } catch { }
+                await PlayAudioFileAsync(aiffFile);
+                try { File.Delete(aiffFile); } catch { }
             }
         }
+        finally
+        {
+            try { File.Delete(tmpFile); } catch { }
+        }
+    }
+
+    private static async Task PlayAudioFileAsync(string filePath)
+    {
+        string player;
+        string args;
+
+        if (OperatingSystem.IsMacOS())
+        {
+            player = "afplay";
+            args = $"\"{filePath}\"";
+        }
+        else if (OperatingSystem.IsLinux())
+        {
+            player = "aplay";
+            args = $"\"{filePath}\"";
+        }
+        else if (OperatingSystem.IsWindows())
+        {
+            player = "powershell";
+            args = $"-c \"(New-Object Media.SoundPlayer '{filePath}').PlaySync()\"";
+        }
+        else return;
+
+        using var process = new System.Diagnostics.Process();
+        process.StartInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = player,
+            Arguments = args,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        process.Start();
+        await process.WaitForExitAsync();
     }
 
     private static async Task CopyToClipboardAsync(string text)
