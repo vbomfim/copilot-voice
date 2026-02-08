@@ -83,6 +83,7 @@ public sealed class AppServices : IDisposable
         {
             Log($"Auth failed: {ex.Message}");
             OnStateChanged?.Invoke("Error");
+            OnSpeechBubble?.Invoke($"Auth error: {ex.Message}", null);
             return;
         }
 
@@ -271,6 +272,7 @@ public sealed class AppServices : IDisposable
         {
             Log($"Mic error: {ex.Message}");
             OnStateChanged?.Invoke("Error");
+            OnSpeechBubble?.Invoke($"Mic error: {ex.Message}", null);
             _isRecording = false;
         }
         finally
@@ -343,6 +345,7 @@ public sealed class AppServices : IDisposable
         {
             Log($"Error: {ex}");
             OnStateChanged?.Invoke("Error");
+            OnSpeechBubble?.Invoke($"Error: {ex.Message}", null);
         }
         finally
         {
