@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using CopilotVoice.Sessions;
 
 namespace CopilotVoice.Input;
@@ -7,6 +8,23 @@ public class MacInputSender : IInputSender
 {
     public bool IsSupported => OperatingSystem.IsMacOS();
 
+    // CGEvent P/Invoke for direct keystroke sending (no osascript needed)
+    [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
+    private static extern IntPtr CGEventCreateKeyboardEvent(IntPtr source, ushort keycode, bool keyDown);
+
+    [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
+    private static extern void CGEventSetFlags(IntPtr ev, ulong flags);
+
+    [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
+    private static extern void CGEventPost(int tap, IntPtr ev);
+
+    [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
+    private static extern void CFRelease(IntPtr cf);
+
+    private const ushort kVK_V = 9;
+    private const ushort kVK_Return = 36;
+    private const ulong kCGEventFlagMaskCommand = 1UL << 20;
+
     public async Task SendTextAsync(CopilotSession session, string text, bool pressEnter = true)
     {
         ArgumentNullException.ThrowIfNull(session);
@@ -14,55 +32,71 @@ public class MacInputSender : IInputSender
 
         Console.Error.WriteLine($"[MacInputSender] Pasting {text.Length} chars to {session.TerminalApp}: \"{text[..Math.Min(80, text.Length)]}\"");
 
-        var script = BuildClipboardPasteScript(session, text, pressEnter);
-
-        using var process = new Process();
-        process.StartInfo = new ProcessStartInfo
+        // Set clipboard via pbcopy
+        using (var proc = new Process())
         {
-            FileName = "osascript",
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = "pbcopy",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            proc.Start();
+            await proc.StandardInput.WriteAsync(text);
+            proc.StandardInput.Close();
+            await proc.WaitForExitAsync();
+        }
 
-        process.Start();
-        await process.StandardInput.WriteLineAsync(script);
-        process.StandardInput.Close();
+        // Activate the target app via stdin (avoids shell quoting issues)
+        using (var proc = new Process())
+        {
+            var app = session.TerminalApp ?? "Terminal";
+            proc.StartInfo = new ProcessStartInfo
+            {
+                FileName = "osascript",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            proc.Start();
+            await proc.StandardInput.WriteAsync($"tell application \"{app}\" to activate");
+            proc.StandardInput.Close();
+            await proc.WaitForExitAsync();
+        }
 
-        var stderr = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
+        await Task.Delay(150);
 
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"osascript failed (exit {process.ExitCode}): {stderr}");
+        // Cmd+V via CGEvent (uses CopilotVoice's own Accessibility permission)
+        SendKeyCombo(kVK_V, kCGEventFlagMaskCommand);
+
+        if (pressEnter)
+        {
+            await Task.Delay(300);
+            SendKey(kVK_Return);
+            await Task.Delay(150);
+            SendKey(kVK_Return);
+        }
     }
 
-    private static string BuildClipboardPasteScript(CopilotSession session, string text, bool pressEnter)
+    private static void SendKey(ushort keycode)
     {
-        var app = session.TerminalApp ?? "Terminal";
-        var escaped = text.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        var down = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, true);
+        var up = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, false);
+        CGEventPost(0, down);
+        CGEventPost(0, up);
+        CFRelease(down);
+        CFRelease(up);
+    }
 
-        var enterLine = pressEnter
-            ? "\n    delay 0.2\n    key code 36\n    delay 0.15\n    key code 36"
-            : "";
-
-        // For apps with AppleScript support (Terminal.app, iTerm2),
-        // find the copilot window. For others (Ghostty, Alacritty),
-        // just activate the app and paste.
-        return $@"-- Save current clipboard
-set oldClip to the clipboard
-set the clipboard to ""{escaped}""
-tell application ""{app}"" to activate
-delay 0.15
-tell application ""System Events""
-    keystroke ""v"" using command down
-    delay 0.3{enterLine}
-end tell
--- Restore clipboard after brief delay
-delay 0.1
-try
-    set the clipboard to oldClip
-end try";
+    private static void SendKeyCombo(ushort keycode, ulong flags)
+    {
+        var down = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, true);
+        CGEventSetFlags(down, flags);
+        var up = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, false);
+        CGEventPost(0, down);
+        CGEventPost(0, up);
+        CFRelease(down);
+        CFRelease(up);
     }
 }

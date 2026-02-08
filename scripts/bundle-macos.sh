@@ -16,7 +16,7 @@ fi
 
 PUBLISH_DIR="/tmp/copilot-voice-publish"
 APP_BUNDLE="/tmp/CopilotVoice.app"
-INSTALL_DIR="/Applications/CopilotVoice.app"
+INSTALL_DIR="$HOME/Applications/CopilotVoice.app"
 
 echo "Publishing ($RID)..."
 "$DOTNET" publish "$CSPROJ" -c Release -r "$RID" --self-contained \
