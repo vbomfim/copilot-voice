@@ -11,6 +11,7 @@ public class PushToTalkRecognizer : IDisposable
     private readonly AppConfig _config;
     private readonly AzureAuthProvider _authProvider;
     private readonly List<string> _recognizedSegments = new();
+    private bool _initialized;
     private bool _disposed;
 
     public event Action<string>? OnPartialResult;
@@ -23,9 +24,9 @@ public class PushToTalkRecognizer : IDisposable
         _authProvider = new AzureAuthProvider();
     }
 
-    public async Task StartRecordingAsync()
+    private void EnsureInitialized()
     {
-        _recognizedSegments.Clear();
+        if (_initialized) return;
 
         var (key, region) = _authProvider.Resolve(_config);
         var speechConfig = SpeechConfig.FromSubscription(key, region);
@@ -71,7 +72,16 @@ public class PushToTalkRecognizer : IDisposable
                 OnError?.Invoke($"{e.ErrorCode}: {e.ErrorDetails}");
         };
 
-        await _recognizer.StartContinuousRecognitionAsync();
+        _initialized = true;
+        OnLog?.Invoke("STT: initialized (reusable)");
+    }
+
+    public async Task StartRecordingAsync()
+    {
+        _recognizedSegments.Clear();
+        EnsureInitialized();
+
+        await _recognizer!.StartContinuousRecognitionAsync();
         OnLog?.Invoke("STT: recording started");
     }
 
@@ -83,7 +93,6 @@ public class PushToTalkRecognizer : IDisposable
 
         try
         {
-            // Timeout after 5 seconds to avoid hanging
             var stopTask = _recognizer.StopContinuousRecognitionAsync();
             if (await Task.WhenAny(stopTask, Task.Delay(5000)) != stopTask)
             {
@@ -99,14 +108,6 @@ public class PushToTalkRecognizer : IDisposable
         {
             OnLog?.Invoke($"STT stop error: {ex.Message}");
         }
-
-        // Delay disposal to let native callbacks finish
-        await Task.Delay(200);
-
-        _recognizer.Dispose();
-        _recognizer = null;
-        _audioConfig?.Dispose();
-        _audioConfig = null;
 
         var result = string.Join(" ", _recognizedSegments);
         OnLog?.Invoke($"STT result: \"{result}\" ({_recognizedSegments.Count} segments)");
