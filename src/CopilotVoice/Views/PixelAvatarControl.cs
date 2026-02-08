@@ -5,24 +5,26 @@ using Avalonia.Media;
 namespace CopilotVoice.Views;
 
 /// <summary>
-/// Custom Avalonia control that renders pixel art from a 2D char grid.
-/// Each character maps to a color via PixelAvatarData.GetColor().
+/// Custom Avalonia control that renders the Copilot CLI robot as ASCII art.
 /// </summary>
 public class PixelAvatarControl : Control
 {
     private string[]? _frame;
-    private int _pixelSize = 12;
+    private double _fontSize = 14;
+    private readonly Typeface _typeface = new("Cascadia Mono, Menlo, Consolas, monospace");
 
     public void SetFrame(string[] frame)
     {
         _frame = frame;
         InvalidateVisual();
+        InvalidateMeasure();
     }
 
     public void SetPixelSize(int size)
     {
-        _pixelSize = size;
+        _fontSize = size;
         InvalidateVisual();
+        InvalidateMeasure();
     }
 
     public override void Render(DrawingContext context)
@@ -30,24 +32,19 @@ public class PixelAvatarControl : Control
         base.Render(context);
         if (_frame == null || _frame.Length == 0) return;
 
-        var rows = _frame.Length;
-        var cols = _frame[0].Length;
-        var ps = _pixelSize;
+        var foreground = new SolidColorBrush(Color.Parse("#CDD6F4"));
 
-        for (int y = 0; y < rows; y++)
+        for (int y = 0; y < _frame.Length; y++)
         {
-            var row = _frame[y];
-            for (int x = 0; x < row.Length; x++)
-            {
-                var colorHex = UI.Avatar.PixelAvatarData.GetColor(row[x]);
-                if (colorHex == UI.Avatar.PixelAvatarData.ColorTransparent)
-                    continue;
+            var formattedText = new FormattedText(
+                _frame[y],
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                _typeface,
+                _fontSize,
+                foreground);
 
-                var color = Color.Parse(colorHex);
-                var brush = new SolidColorBrush(color);
-                var rect = new Rect(x * ps, y * ps, ps, ps);
-                context.FillRectangle(brush, rect);
-            }
+            context.DrawText(formattedText, new Point(0, y * (_fontSize * 1.2)));
         }
     }
 
@@ -56,8 +53,21 @@ public class PixelAvatarControl : Control
         if (_frame == null || _frame.Length == 0)
             return new Size(0, 0);
 
-        var cols = _frame[0].Length;
-        var rows = _frame.Length;
-        return new Size(cols * _pixelSize, rows * _pixelSize);
+        // Measure using the widest line
+        var foreground = new SolidColorBrush(Color.Parse("#CDD6F4"));
+        double maxWidth = 0;
+        foreach (var line in _frame)
+        {
+            var ft = new FormattedText(
+                line,
+                System.Globalization.CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight,
+                _typeface,
+                _fontSize,
+                foreground);
+            if (ft.Width > maxWidth) maxWidth = ft.Width;
+        }
+
+        return new Size(maxWidth, _frame.Length * (_fontSize * 1.2));
     }
 }
