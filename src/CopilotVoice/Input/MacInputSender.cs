@@ -44,15 +44,12 @@ public class MacInputSender : IInputSender
             return $"tell application \"iTerm2\" to tell current session of current window to write text \"{escapedText}\"{enterClause}";
         }
 
-        // Default: Terminal.app — use "do script" which auto-appends a newline
+        // Default: Terminal.app
         if (pressEnter)
         {
-            return string.IsNullOrEmpty(session.Id)
-                ? $"tell application \"Terminal\" to do script \"{escapedText}\" in front window"
-                : $"tell application \"Terminal\" to do script \"{escapedText}\" in window id {session.Id}";
+            return $"tell application \"Terminal\" to do script \"{escapedText}\" in front window";
         }
 
-        // Without Enter we use keystroke injection instead
         return $"tell application \"System Events\" to keystroke \"{escapedText}\"";
     }
 
