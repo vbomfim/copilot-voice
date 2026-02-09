@@ -57,10 +57,9 @@ public class MacInputSender : IInputSender
 
         if (pressEnter)
         {
-            // Wait for bracketed paste to complete — terminal needs time to
-            // receive the full paste and close the paste bracket before Enter
-            // will be interpreted as submit rather than newline
-            await Task.Delay(1500);
+            // Scale delay with text length — longer text needs more time to paste
+            var pasteDelay = Math.Max(500, Math.Min(2000, text.Length * 5));
+            await Task.Delay(pasteDelay);
             SendKeyWithDelay(kVK_Return);
         }
     }
