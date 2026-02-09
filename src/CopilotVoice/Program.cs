@@ -87,19 +87,31 @@ class Program
         var terminalApp = string.Empty;
         try
         {
-            // Walk up to find the shell, then its parent (the terminal)
-            var ppidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {parentPid} -o ppid=").Trim();
-            if (int.TryParse(ppidStr, out var shellPid))
+            // Walk up the process tree past shells to find the terminal emulator
+            var shells = new[] { "login", "zsh", "bash", "sh", "fish", "nu", "dotnet" };
+            var currentPid = Environment.ProcessId;
+
+            while (true)
             {
-                parentPid = shellPid;
-                // One more level up to find the terminal emulator
-                var termPpidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {shellPid} -o ppid=").Trim();
-                if (int.TryParse(termPpidStr, out var termPid))
+                var ppidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {currentPid} -o ppid=").Trim();
+                if (!int.TryParse(ppidStr, out var ppid) || ppid <= 1)
+                    break;
+
+                var comm = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {ppid} -o comm=").Trim();
+                var commName = Path.GetFileName(comm);
+
+                if (shells.Any(s => commName.Equals(s, StringComparison.OrdinalIgnoreCase)))
                 {
-                    var termCmd = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {termPid} -o comm=").Trim();
-                    if (!string.IsNullOrEmpty(termCmd))
-                        terminalApp = Path.GetFileName(termCmd);
+                    // This is a shell — record as parentPid but keep walking
+                    parentPid = ppid;
+                    currentPid = ppid;
+                    continue;
                 }
+
+                // Found a non-shell parent — this is likely the terminal emulator
+                parentPid = ppid;
+                terminalApp = commName;
+                break;
             }
         }
         catch { /* use own PID as fallback */ }
