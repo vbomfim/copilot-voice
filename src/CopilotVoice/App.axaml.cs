@@ -15,6 +15,7 @@ public class App : Application
     private NativeMenuItem? _micStatusItem;
     private NativeMenuItem? _pomodoroItem;
     private NativeMenuItem? _sessionsItem;
+    private NativeMenuItem? _voiceItem;
     private NativeMenuItem? _lockToggleItem;
     private NativeMenuItem? _topmostItem;
 
@@ -107,6 +108,27 @@ public class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
+    private void RebuildVoiceMenu()
+    {
+        if (_voiceItem?.Menu == null || _services == null) return;
+        _voiceItem.Menu.Items.Clear();
+
+        var currentVoice = _services.Config.VoiceName;
+        foreach (var (name, label) in Config.AppConfig.AvailableVoices)
+        {
+            var prefix = name == currentVoice ? "✓ " : "   ";
+            var item = new NativeMenuItem($"{prefix}{label}");
+            var voiceName = name;
+            item.Click += (_, _) => _services.ChangeVoice(voiceName);
+            _voiceItem.Menu.Items.Add(item);
+        }
+
+        // Find label for current voice
+        var currentLabel = Config.AppConfig.AvailableVoices
+            .FirstOrDefault(v => v.Name == currentVoice).Label ?? currentVoice;
+        _voiceItem.Header = $"🔊 Voice: {currentLabel}";
+    }
+
     private NativeMenu BuildTrayMenu(IClassicDesktopStyleApplicationLifetime desktop)
     {
         var menu = new NativeMenu();
@@ -158,6 +180,17 @@ public class App : Application
                 });
             };
             menu.Add(_sessionsItem);
+            menu.Add(new NativeMenuItemSeparator());
+
+            // Voice submenu
+            _voiceItem = new NativeMenuItem($"🔊 Voice: {_services.Config.VoiceName}")
+            {
+                Menu = new NativeMenu()
+            };
+            RebuildVoiceMenu();
+            _services.OnVoiceChanged += _ =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(RebuildVoiceMenu);
+            menu.Add(_voiceItem);
             menu.Add(new NativeMenuItemSeparator());
         }
 

@@ -41,6 +41,7 @@ public sealed class AppServices : IDisposable
     public event Action<List<CopilotSession>>? OnSessionsRefreshed;
     public event Action<string>? OnLog;
     public event Action<bool>? OnMicAvailabilityChanged;
+    public event Action<string>? OnVoiceChanged;
     // Window control: action, x, y, position → result
     public event Func<string, int?, int?, string?, Task<string>>? OnWindowControl;
 
@@ -435,6 +436,33 @@ public sealed class AppServices : IDisposable
         var sessions = _sessionManager.GetAllSessions();
         Log($"Refreshed: {sessions.Count} session(s)");
         OnSessionsRefreshed?.Invoke(sessions);
+    }
+
+    public void ChangeVoice(string voiceName)
+    {
+        Config.VoiceName = voiceName;
+        _configManager.Save(Config);
+
+        // Recreate TTS engine with new voice
+        _tts?.Dispose();
+        try
+        {
+            _tts = new TextToSpeechEngine(Config);
+            _tts.OnSpeechStarted += () =>
+            {
+                Animator.RecordInteraction();
+                OnStateChanged?.Invoke("Speaking");
+            };
+            _tts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
+            _tts.OnError += err => Log($"TTS error: {err}");
+            _voiceName = Config.VoiceName;
+            Log($"Voice changed to: {voiceName}");
+            OnVoiceChanged?.Invoke(voiceName);
+        }
+        catch (Exception ex)
+        {
+            Log($"Voice change error: {ex.Message}");
+        }
     }
 
     private void Log(string msg)
