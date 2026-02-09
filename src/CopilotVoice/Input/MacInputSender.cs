@@ -72,9 +72,9 @@ public class MacInputSender : IInputSender
 
         if (pressEnter)
         {
-            await Task.Delay(300);
-            SendKey(kVK_Return);
-            await Task.Delay(150);
+            // Scale delay with text length — longer text needs more time to paste
+            var pasteDelay = Math.Max(500, Math.Min(2000, text.Length * 5));
+            await Task.Delay(pasteDelay);
             SendKey(kVK_Return);
         }
     }
