@@ -30,6 +30,29 @@ public class AppConfig
     public string VoiceName { get; set; } = "en-US-JennyNeural";
     public double VoiceSpeed { get; set; } = 1.0;
 
+    /// <summary>Curated list of popular Azure Neural TTS voices.</summary>
+    public static readonly (string Name, string Label)[] AvailableVoices = new[]
+    {
+        ("en-US-JennyNeural", "Jenny (US)"),
+        ("en-US-AriaNeural", "Aria (US)"),
+        ("en-US-GuyNeural", "Guy (US)"),
+        ("en-US-DavisNeural", "Davis (US)"),
+        ("en-US-SaraNeural", "Sara (US)"),
+        ("en-US-AndrewNeural", "Andrew (US)"),
+        ("en-US-EmmaNeural", "Emma (US)"),
+        ("en-GB-SoniaNeural", "Sonia (UK)"),
+        ("en-GB-RyanNeural", "Ryan (UK)"),
+        ("en-AU-NatashaNeural", "Natasha (AU)"),
+        ("en-AU-WilliamNeural", "William (AU)"),
+        ("pt-BR-FranciscaNeural", "Francisca (BR)"),
+        ("pt-BR-AntonioNeural", "Antonio (BR)"),
+        ("es-ES-ElviraNeural", "Elvira (ES)"),
+        ("fr-FR-DeniseNeural", "Denise (FR)"),
+        ("de-DE-KatjaNeural", "Katja (DE)"),
+        ("ja-JP-NanamiNeural", "Nanami (JP)"),
+        ("zh-CN-XiaoxiaoNeural", "Xiaoxiao (CN)"),
+    };
+
     // Avatar
     public bool ShowAvatar { get; set; } = true;
     public string AvatarTheme { get; set; } = "robot";

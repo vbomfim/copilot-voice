@@ -53,6 +53,19 @@ export AZURE_SPEECH_REGION=centralus
 
 Copilot Voice works as a companion to GitHub Copilot CLI. Once running, Copilot CLI can speak to you, and you can speak to it.
 
+There are **two ways** to teach Copilot CLI to use voice — **MCP** (recommended) or **Skills**. You can use both together.
+
+| | MCP (Model Context Protocol) | Skills (Instructions file) |
+|---|---|---|
+| **How it works** | Copilot CLI connects to the voice app as an MCP server and gets native tools (`speak`, `listen`, `set_avatar`, etc.) | Instructions in `.github/copilot-instructions.md` tell the agent to call HTTP endpoints via `curl` |
+| **Reliability** | ✅ High — tools appear automatically, agent can't forget | ⚠️ Medium — depends on agent reading and following instructions |
+| **Discoverability** | ✅ Agent sees tools in its tool list | ❌ Agent must read and interpret free-text instructions |
+| **Setup** | Add `mcp-config.json` (repo or user level) | Add text to `copilot-instructions.md` |
+| **Works offline** | Only if voice app is running | Only if voice app is running |
+| **Best for** | Primary integration — always-on voice tools | Supplementary guidance — behavioral rules, when/how to speak |
+
+**Recommendation**: Use MCP for the tools + Skills for behavioral guidance (when to speak, tone, rules).
+
 ### Step 1: Start Copilot Voice
 
 ```bash
@@ -69,9 +82,51 @@ copilot-voice --register                       # auto-detects terminal and worki
 copilot-voice --register --label "my-project"  # with a custom label
 ```
 
-### Step 3: Add voice instructions for Copilot CLI
+### Step 3: Connect Copilot CLI to voice (choose one or both)
 
-Add the following to `.github/copilot-instructions.md` in any repository to teach Copilot CLI to use voice:
+#### Option A: MCP (Recommended)
+
+MCP gives Copilot CLI native tools like `speak`, `listen`, `set_avatar`, `notify`, and `window`. The agent discovers them automatically.
+
+**Per-repository setup** — add `.copilot/mcp-config.json` to your repo:
+
+```json
+{
+  "mcpServers": {
+    "copilot-voice": {
+      "type": "sse",
+      "url": "http://localhost:7702/sse"
+    }
+  }
+}
+```
+
+**User-level setup** — add to `~/.copilot/mcp-config.json` (applies to all repos):
+
+```json
+{
+  "mcpServers": {
+    "copilot-voice": {
+      "type": "sse",
+      "url": "http://localhost:7702/sse"
+    }
+  }
+}
+```
+
+Once configured, Copilot CLI will have these MCP tools available:
+
+| Tool | Description |
+|------|-------------|
+| `speak` | Speak text aloud via TTS with avatar animation |
+| `listen` | Start microphone listening, returns transcribed text |
+| `set_avatar` | Change avatar expression (normal, thinking, speaking, listening, focused, relaxed, sleeping) |
+| `notify` | Show notification with optional voice |
+| `window` | Control avatar window (show, hide, toggle, topmost, move) |
+
+#### Option B: Skills (Instructions file)
+
+Skills are free-text instructions that guide the agent's behavior. Add to `.github/copilot-instructions.md` in your repo:
 
 ```markdown
 ## Voice Communication
@@ -84,6 +139,7 @@ Copilot Voice is running as a companion app. Use it to speak to the user.
 - Errors: "Build failed, take a look at the terminal"
 
 ### How to speak (TTS with avatar animation)
+If the `speak` MCP tool is available, use it. Otherwise fall back to curl:
 curl -s -X POST http://localhost:7701/speak \
   -H "Content-Type: application/json" \
   -d '{"text":"Your short summary here"}'
@@ -102,12 +158,16 @@ curl -s -X POST http://localhost:7701/bubble \
 - After speaking a question, also write it in the terminal so the user can reference it.
 ```
 
+> **Tip**: You can use both MCP and Skills together without duplication. When MCP tools are available, the agent uses the native `speak` tool directly — it won't also call `curl`. The Skills file then provides *behavioral guidance* only (when to speak, tone, rules). If MCP is not configured, the agent falls back to the `curl` commands in the Skills file.
+
 ### Step 4: Use voice
 
 - **Voice In**: Hold the hotkey (default: `Alt+Space`), speak, release — your words are transcribed and sent to Copilot CLI
-- **Voice Out**: Copilot CLI calls `/speak` to talk back to you through the avatar
+- **Voice Out**: Copilot CLI uses the `speak` tool (MCP) or calls `/speak` (Skills) to talk back through the avatar
 
-### Endpoints
+### HTTP API
+
+All endpoints are on `http://localhost:7701` (used by Skills approach and direct integrations):
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -116,7 +176,9 @@ curl -s -X POST http://localhost:7701/bubble \
 | `/bubble` | POST | Show visual speech bubble (no audio) |
 | `/register` | POST | Register a terminal session |
 
-All endpoints are on `http://localhost:7701`.
+### MCP Server
+
+The MCP server runs on `http://localhost:7702/sse` (SSE transport). Connect any MCP-compatible client to this URL.
 
 ## Requirements
 

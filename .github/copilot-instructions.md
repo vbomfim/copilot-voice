@@ -9,6 +9,12 @@
 ## Voice Communication
 Copilot Voice is running as a companion app. Use it to **speak** to the user:
 
+### First: Register your session
+At the start of every session, register so voice input is directed to you. Use the `register` MCP tool:
+- `pid`: your process ID (use `Environment.ProcessId` or `process.pid`)
+- `working_directory`: the current working directory
+- `label`: (optional) display name for this session
+
 ### When to speak
 - **Status updates**: "Build passed", "Tests done, 2 failures", "PR created"
 - **Questions**: "Should I fix this test or skip it? Check the terminal for details"

@@ -55,6 +55,7 @@ public static class PixelAvatarData
     private const string MouthSmile    = "▀███▄     ‿‿     ▄███▀";
     private const string MouthRelaxed  = "▀███▄     ──     ▄███▀";
     private const string MouthSad      = "▀███▄     ⌢⌢     ▄███▀";
+    private const string MouthZipper   = "▀███▄     ✕✕     ▄███▀";
 
     public static string[] GetFrame(AvatarExpression expression) => expression switch
     {
@@ -96,6 +97,9 @@ public static class PixelAvatarData
 
         AvatarExpression.Cry => new[]
             { Row0, Row1, Row2, Row3, Row4, EyeTopCry, EyeBotCry, MouthSad, Row8 },
+
+        AvatarExpression.Muted => new[]
+            { Row0, Row1, Row2, Row3, Row4, EyeTop, EyeBot, MouthZipper, Row8 },
 
         _ => GetFrame(AvatarExpression.Normal),
     };

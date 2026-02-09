@@ -206,6 +206,13 @@ public partial class AvatarWindow : Window
             });
 
         HotkeyLabel.Text = $"\u2328\ufe0f {services.Config.Hotkey}";
+
+        services.OnMuteChanged += muted =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                MuteButton.Content = muted ? "🔇" : "🔊";
+                ToolTip.SetTip(MuteButton, muted ? "Unmute voice output" : "Mute voice output");
+            });
     }
 
     private string DoShow() { Show(); OnVisibilityChanged?.Invoke(true); return "Window shown"; }
@@ -224,6 +231,10 @@ public partial class AvatarWindow : Window
     private void OnPinClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
         SetTopmost(!Topmost);
+    }
+    private void OnMuteClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _services?.ToggleMute();
     }
     public void ResetPosition()
     {
