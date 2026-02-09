@@ -139,6 +139,7 @@ Copilot Voice is running as a companion app. Use it to speak to the user.
 - Errors: "Build failed, take a look at the terminal"
 
 ### How to speak (TTS with avatar animation)
+If the `speak` MCP tool is available, use it. Otherwise fall back to curl:
 curl -s -X POST http://localhost:7701/speak \
   -H "Content-Type: application/json" \
   -d '{"text":"Your short summary here"}'
@@ -157,7 +158,7 @@ curl -s -X POST http://localhost:7701/bubble \
 - After speaking a question, also write it in the terminal so the user can reference it.
 ```
 
-> **Tip**: When using MCP + Skills together, the Skills file can focus on *behavioral guidance* (when to speak, tone, rules) while MCP handles the actual tool execution.
+> **Tip**: You can use both MCP and Skills together without duplication. When MCP tools are available, the agent uses the native `speak` tool directly — it won't also call `curl`. The Skills file then provides *behavioral guidance* only (when to speak, tone, rules). If MCP is not configured, the agent falls back to the `curl` commands in the Skills file.
 
 ### Step 4: Use voice
 
