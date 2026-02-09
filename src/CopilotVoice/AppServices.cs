@@ -170,15 +170,19 @@ public sealed class AppServices : IDisposable
                     OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
                     if (!_isMuted)
                         await SayStaticAsync(msg.Text);
+                    else
+                        await Task.Delay(Math.Max(3000, msg.Text.Length * 50));
                     OnSpeechBubble?.Invoke(null, null);
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
             _messageListener.OnSpeakReceived += async msg =>
             {
-                if (_isMuted) return;
                 OnSpeechBubble?.Invoke(msg.Text, null);
-                await SayStaticAsync(msg.Text);
+                if (!_isMuted)
+                    await SayStaticAsync(msg.Text);
+                else
+                    await Task.Delay(Math.Max(3000, msg.Text.Length * 50));
                 OnSpeechBubble?.Invoke(null, null);
             };
             _messageListener.OnBubbleReceived += msg =>
