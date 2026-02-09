@@ -296,6 +296,7 @@ public sealed class AppServices : IDisposable
 
             // Stop any active TTS when user starts recording
             _tts?.Stop();
+            try { if (_activeAudioProcess is { HasExited: false } p) p.Kill(); } catch { }
 
             Log("Hotkey pressed — starting recording");
             OnStateChanged?.Invoke("Recording");
@@ -477,9 +478,13 @@ public sealed class AppServices : IDisposable
     public void ToggleMute()
     {
         _isMuted = !_isMuted;
+        _isMutedStatic = _isMuted;
         Log($"Mute: {(_isMuted ? "ON" : "OFF")}");
         if (_isMuted)
+        {
             _tts?.Stop();
+            try { if (_activeAudioProcess is { HasExited: false } p) p.Kill(); } catch { }
+        }
         OnMuteChanged?.Invoke(_isMuted);
     }
 
@@ -492,9 +497,12 @@ public sealed class AppServices : IDisposable
     private static string _voiceName = "en-US-AndrewMultilingualNeural";
     private static string? _azureSpeechKey;
     private static string? _azureSpeechRegion;
+    private static bool _isMutedStatic;
+    private static System.Diagnostics.Process? _activeAudioProcess;
 
     public static async Task SayStaticAsync(string text)
     {
+        if (_isMutedStatic) return;
         Console.WriteLine($"[TTS] SayStaticAsync called: \"{text[..Math.Min(text.Length, 50)]}...\"");
         var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.wav");
         try
@@ -578,7 +586,9 @@ public sealed class AppServices : IDisposable
             CreateNoWindow = true,
         };
         process.Start();
+        _activeAudioProcess = process;
         await process.WaitForExitAsync();
+        _activeAudioProcess = null;
     }
 
     private static async Task CopyToClipboardAsync(string text)
