@@ -142,6 +142,22 @@ public static class McpToolDefinitions
                 required = new[] { "action" },
             },
         },
+        new
+        {
+            name = "register",
+            description = "Register the current Copilot CLI session with Copilot Voice. Call this once at the start of a session so voice input is directed to you.",
+            inputSchema = new
+            {
+                type = "object",
+                properties = new Dictionary<string, object>
+                {
+                    ["pid"] = new { type = "number", description = "Process ID of the Copilot CLI process" },
+                    ["working_directory"] = new { type = "string", description = "Current working directory" },
+                    ["label"] = new { type = "string", description = "Display label for this session (optional)" },
+                },
+                required = new[] { "pid", "working_directory" },
+            },
+        },
     };
 }
 
@@ -156,6 +172,7 @@ public static class McpToolHandler
     public static Action<string>? OnSetAvatar { get; set; }
     public static Func<string, bool, Task>? OnNotify { get; set; }
     public static Func<string, int?, int?, string?, Task<string>>? OnWindowControl { get; set; }
+    public static Func<int, string, string?, Task<string>>? OnRegister { get; set; }
 
     public static async Task<object> HandleAsync(string toolName, JsonElement? args)
     {
@@ -166,6 +183,7 @@ public static class McpToolHandler
             "set_avatar" or "copilot-voice-set_avatar" => HandleSetAvatar(args),
             "notify" or "copilot-voice-notify" => await HandleNotifyAsync(args),
             "copilot-voice-window" => await HandleWindowAsync(args),
+            "register" or "copilot-voice-register" => await HandleRegisterAsync(args),
             _ => new { content = new[] { new { type = "text", text = $"Unknown tool: {toolName}" } }, isError = true },
         };
     }
@@ -227,5 +245,20 @@ public static class McpToolHandler
         }
 
         return new { content = new[] { new { type = "text", text = "Window control not available" } }, isError = true };
+    }
+
+    private static async Task<object> HandleRegisterAsync(JsonElement? args)
+    {
+        var pid = args?.GetProperty("pid").GetInt32() ?? 0;
+        var workingDir = args?.GetProperty("working_directory").GetString() ?? "";
+        var label = args?.TryGetProperty("label", out var l) == true ? l.GetString() : null;
+
+        if (OnRegister != null)
+        {
+            var result = await OnRegister(pid, workingDir, label);
+            return new { content = new[] { new { type = "text", text = result } } };
+        }
+
+        return new { content = new[] { new { type = "text", text = "Registration not available" } }, isError = true };
     }
 }

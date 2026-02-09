@@ -260,6 +260,20 @@ public sealed class AppServices : IDisposable
                     return await OnWindowControl(action, x, y, position);
                 return "Window control not available";
             };
+            Mcp.McpToolHandler.OnRegister = async (pid, workingDir, label) =>
+            {
+                var reg = new Messaging.RegisterRequest
+                {
+                    Pid = pid,
+                    WorkingDirectory = workingDir,
+                    Label = label,
+                };
+                var session = _sessionManager.RegisterSession(reg);
+                Log($"Session registered via MCP: {session.Label} (PID {session.ProcessId})");
+                _sessionManager.LockToSession(session);
+                OnSessionsRefreshed?.Invoke(_sessionManager.GetAllSessions());
+                return $"Registered: {session.Label} (PID {session.ProcessId})";
+            };
             _mcpSseTransport = new Mcp.McpSseTransport(_mcpServer, 7702);
             _mcpSseTransport.OnLog += msg => Log(msg);
             _mcpSseTransport.Start();
