@@ -363,24 +363,51 @@ public sealed class AppServices : IDisposable
                 Log($"Clipboard failed: {clipEx.Message}");
             }
 
-            // Always paste into console (delivers text as a prompt)
-            var target = _sessionManager.GetTargetSession();
-            if (target != null && _inputSender != null)
+            // Try MCP sampling first (sends prompt directly via SSE, no paste/focus needed)
+            var delivered = false;
+            if (_mcpServer?.Clients.Count > 0)
             {
                 try
                 {
-                    Log($"Pasting to {target.Label}: \"{text}\"");
-                    await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                    Log($"Pasted to {target.Label} OK");
+                    Log($"Sending via MCP sampling: \"{text}\"");
+                    var result = await _mcpServer.BroadcastSamplingAsync(text, TimeSpan.FromSeconds(120));
+                    if (result != null)
+                    {
+                        delivered = true;
+                        Log($"MCP sampling delivered, response: {result.Content?.Text?[..Math.Min(60, result.Content?.Text?.Length ?? 0)]}");
+                    }
+                    else
+                    {
+                        Log("MCP sampling returned null — falling back to paste");
+                    }
                 }
-                catch (Exception sendEx)
+                catch (Exception mcpEx)
                 {
-                    Log($"Send failed: {sendEx.Message} — text is in clipboard");
+                    Log($"MCP sampling failed: {mcpEx.Message} — falling back to paste");
                 }
             }
-            else
+
+            // Fallback: paste into console
+            if (!delivered)
             {
-                Log("No target session — text is in clipboard (Cmd+V to paste)");
+                var target = _sessionManager.GetTargetSession();
+                if (target != null && _inputSender != null)
+                {
+                    try
+                    {
+                        Log($"Pasting to {target.Label}: \"{text}\"");
+                        await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
+                        Log($"Pasted to {target.Label} OK");
+                    }
+                    catch (Exception sendEx)
+                    {
+                        Log($"Send failed: {sendEx.Message} — text is in clipboard");
+                    }
+                }
+                else
+                {
+                    Log("No target session — text is in clipboard (Cmd+V to paste)");
+                }
             }
 
             OnStateChanged?.Invoke("Ready");
