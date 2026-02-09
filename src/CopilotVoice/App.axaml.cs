@@ -16,6 +16,7 @@ public class App : Application
     private NativeMenuItem? _pomodoroItem;
     private NativeMenuItem? _sessionsItem;
     private NativeMenuItem? _voiceItem;
+    private NativeMenuItem? _muteItem;
     private NativeMenuItem? _lockToggleItem;
     private NativeMenuItem? _topmostItem;
 
@@ -191,6 +192,19 @@ public class App : Application
             _services.OnVoiceChanged += _ =>
                 Avalonia.Threading.Dispatcher.UIThread.Post(RebuildVoiceMenu);
             menu.Add(_voiceItem);
+
+            _muteItem = new NativeMenuItem("🔊 Mute: Off");
+            _muteItem.Click += (_, _) =>
+            {
+                _services?.ToggleMute();
+            };
+            _services.OnMuteChanged += muted =>
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (_muteItem != null)
+                        _muteItem.Header = muted ? "🔇 Mute: On" : "🔊 Mute: Off";
+                });
+            menu.Add(_muteItem);
             menu.Add(new NativeMenuItemSeparator());
         }
 

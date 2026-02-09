@@ -30,6 +30,7 @@ public sealed class AppServices : IDisposable
     private bool _isBusy;
     private bool _disposed;
     private bool _hasMicrophone = true;
+    private bool _isMuted;
     private CancellationTokenSource? _micMonitorCts;
 
     // UI events
@@ -42,6 +43,7 @@ public sealed class AppServices : IDisposable
     public event Action<string>? OnLog;
     public event Action<bool>? OnMicAvailabilityChanged;
     public event Action<string>? OnVoiceChanged;
+    public event Action<bool>? OnMuteChanged;
     // Window control: action, x, y, position → result
     public event Func<string, int?, int?, string?, Task<string>>? OnWindowControl;
 
@@ -166,13 +168,15 @@ public sealed class AppServices : IDisposable
                 try
                 {
                     OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
-                    await SayStaticAsync(msg.Text);
+                    if (!_isMuted)
+                        await SayStaticAsync(msg.Text);
                     OnSpeechBubble?.Invoke(null, null);
                 }
                 catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
             };
             _messageListener.OnSpeakReceived += async msg =>
             {
+                if (_isMuted) return;
                 OnSpeechBubble?.Invoke(msg.Text, null);
                 await SayStaticAsync(msg.Text);
                 OnSpeechBubble?.Invoke(null, null);
@@ -289,6 +293,9 @@ public sealed class AppServices : IDisposable
         {
             if (_isRecording) return; // double-check under lock
             _isRecording = true;
+
+            // Stop any active TTS when user starts recording
+            _tts?.Stop();
 
             Log("Hotkey pressed — starting recording");
             OnStateChanged?.Invoke("Recording");
@@ -463,6 +470,17 @@ public sealed class AppServices : IDisposable
         {
             Log($"Voice change error: {ex.Message}");
         }
+    }
+
+    public bool IsMuted => _isMuted;
+
+    public void ToggleMute()
+    {
+        _isMuted = !_isMuted;
+        Log($"Mute: {(_isMuted ? "ON" : "OFF")}");
+        if (_isMuted)
+            _tts?.Stop();
+        OnMuteChanged?.Invoke(_isMuted);
     }
 
     private void Log(string msg)
