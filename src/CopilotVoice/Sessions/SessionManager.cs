@@ -48,8 +48,11 @@ public class SessionManager : IDisposable
 
     public CopilotSession RegisterSession(Messaging.RegisterRequest request)
     {
-        // Remove existing registration for same PID
-        _registeredSessions.RemoveAll(s => s.ProcessId == request.Pid);
+        // Remove existing registration for same PID or same working directory
+        _registeredSessions.RemoveAll(s =>
+            s.ProcessId == request.Pid ||
+            (!string.IsNullOrEmpty(request.WorkingDirectory) &&
+             s.WorkingDirectory == request.WorkingDirectory));
 
         var cwd = !string.IsNullOrEmpty(request.WorkingDirectory)
             ? request.WorkingDirectory
