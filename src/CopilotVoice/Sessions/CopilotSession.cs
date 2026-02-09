@@ -13,6 +13,11 @@ public class CopilotSession
     {
         get
         {
+            // For registered sessions, prefer the terminal title (window name)
+            if (IsRegistered && !string.IsNullOrEmpty(TerminalTitle)
+                && !TerminalTitle.StartsWith("Copilot CLI (PID"))
+                return TerminalTitle;
+
             var basename = string.Empty;
             if (!string.IsNullOrEmpty(WorkingDirectory) && WorkingDirectory != "unknown")
             {

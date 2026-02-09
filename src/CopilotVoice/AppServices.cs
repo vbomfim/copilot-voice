@@ -403,6 +403,31 @@ public sealed class AppServices : IDisposable
     {
         _sessionManager.SelectSession(session);
         Log($"Selected session: {session.Label}");
+        ActivateSessionWindow(session);
+    }
+
+    private static void ActivateSessionWindow(CopilotSession session)
+    {
+        if (!OperatingSystem.IsMacOS() || string.IsNullOrEmpty(session.TerminalApp))
+            return;
+
+        try
+        {
+            var app = session.TerminalApp;
+            using var proc = new System.Diagnostics.Process();
+            proc.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "osascript",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            proc.Start();
+            proc.StandardInput.Write($"tell application \"{app}\" to activate");
+            proc.StandardInput.Close();
+            proc.WaitForExit(3000);
+        }
+        catch { /* best effort */ }
     }
 
     public void RefreshSessions()

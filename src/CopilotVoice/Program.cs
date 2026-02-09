@@ -84,20 +84,49 @@ class Program
     private static async Task RegisterSessionAsync(CliArgs cliArgs)
     {
         var parentPid = Environment.ProcessId;
+        var terminalApp = string.Empty;
         try
         {
-            // Try to get parent PID (the actual terminal shell)
+            // Walk up to find the shell, then its parent (the terminal)
             var ppidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {parentPid} -o ppid=").Trim();
-            if (int.TryParse(ppidStr, out var ppid))
-                parentPid = ppid;
+            if (int.TryParse(ppidStr, out var shellPid))
+            {
+                parentPid = shellPid;
+                // One more level up to find the terminal emulator
+                var termPpidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {shellPid} -o ppid=").Trim();
+                if (int.TryParse(termPpidStr, out var termPid))
+                {
+                    var termCmd = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {termPid} -o comm=").Trim();
+                    if (!string.IsNullOrEmpty(termCmd))
+                        terminalApp = Path.GetFileName(termCmd);
+                }
+            }
         }
         catch { /* use own PID as fallback */ }
+
+        // Try to get the terminal window title via osascript
+        var windowTitle = string.Empty;
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+        {
+            try
+            {
+                var title = Sessions.SessionDetector.RunCommandStatic("osascript",
+                    "-e \"tell application \\\"System Events\\\" to get name of first window of (first application process whose frontmost is true)\"").Trim();
+                if (!string.IsNullOrEmpty(title))
+                    windowTitle = title;
+            }
+            catch { /* ignore */ }
+        }
+
+        var label = cliArgs.RegisterLabel
+            ?? (string.IsNullOrEmpty(windowTitle) ? string.Empty : windowTitle);
 
         var request = new Messaging.RegisterRequest
         {
             Pid = parentPid,
             WorkingDirectory = Environment.CurrentDirectory,
-            Label = cliArgs.RegisterLabel ?? string.Empty
+            Label = label,
+            TerminalApp = terminalApp
         };
 
         var json = System.Text.Json.JsonSerializer.Serialize(request);
