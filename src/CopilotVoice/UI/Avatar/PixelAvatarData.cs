@@ -55,7 +55,7 @@ public static class PixelAvatarData
     private const string MouthSmile    = "▀███▄     ‿‿     ▄███▀";
     private const string MouthRelaxed  = "▀███▄     ──     ▄███▀";
     private const string MouthSad      = "▀███▄     ⌢⌢     ▄███▀";
-    private const string MouthZipper   = "▀███▄   ╶╫╫╫╫╴   ▄███▀";
+    private const string MouthZipper   = "▀███▄     ✕✕     ▄███▀";
 
     public static string[] GetFrame(AvatarExpression expression) => expression switch
     {
