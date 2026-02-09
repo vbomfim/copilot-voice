@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "copilot-voice": {
+      "type": "http",
+      "url": "http://localhost:7702/sse"
+    }
+  }
+}
