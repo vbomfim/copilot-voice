@@ -493,28 +493,55 @@ public sealed class AppServices : IDisposable
 
     public void ChangeVoice(string voiceName)
     {
-        Config.VoiceName = voiceName;
-        _configManager.Save(Config);
+        var previousVoice = Config.VoiceName;
 
-        // Recreate TTS engine with new voice
-        _tts?.Dispose();
+        Config.VoiceName = voiceName;
         try
         {
-            _tts = new TextToSpeechEngine(Config);
-            _tts.OnSpeechStarted += () =>
+            _configManager.Save(Config);
+        }
+        catch (Exception ex)
+        {
+            Log($"Config save error: {ex.Message}");
+            Config.VoiceName = previousVoice;
+            return;
+        }
+
+        // Update static voice name for SayStaticAsync
+        _voiceName = voiceName;
+
+        // Skip TTS engine recreation when voice output is disabled
+        if (!Config.EnableVoiceOutput)
+        {
+            Log($"Voice changed to: {voiceName} (TTS disabled, config saved only)");
+            OnVoiceChanged?.Invoke(voiceName);
+            return;
+        }
+
+        // Recreate TTS engine with new voice — create first, dispose old on success
+        try
+        {
+            var newTts = new TextToSpeechEngine(Config);
+            newTts.OnSpeechStarted += () =>
             {
                 Animator.RecordInteraction();
                 OnStateChanged?.Invoke("Speaking");
             };
-            _tts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
-            _tts.OnError += err => Log($"TTS error: {err}");
-            _voiceName = Config.VoiceName;
+            newTts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
+            newTts.OnError += err => Log($"TTS error: {err}");
+
+            _tts?.Dispose();
+            _tts = newTts;
+
             Log($"Voice changed to: {voiceName}");
             OnVoiceChanged?.Invoke(voiceName);
         }
         catch (Exception ex)
         {
-            Log($"Voice change error: {ex.Message}");
+            Log($"Voice change error: {ex.Message} — keeping previous voice");
+            Config.VoiceName = previousVoice;
+            _voiceName = previousVoice;
+            try { _configManager.Save(Config); } catch { /* best effort revert */ }
         }
     }
 
