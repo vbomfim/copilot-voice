@@ -411,21 +411,6 @@ public sealed class AppServices : IDisposable
         if (!OperatingSystem.IsMacOS() || string.IsNullOrEmpty(session.TerminalApp))
             return;
 
-        // Map process names to macOS application names for osascript
-        var app = session.TerminalApp switch
-        {
-            "ghostty" or "Ghostty" => "Ghostty",
-            "iTerm2" or "iterm2" or "iTermServer-main" => "iTerm",
-            "Terminal" => "Terminal",
-            "kitty" => "kitty",
-            "Alacritty" or "alacritty" => "Alacritty",
-            "WezTerm" or "wezterm-gui" => "WezTerm",
-            "Hyper" => "Hyper",
-            var x when x.Contains("Code") => "Visual Studio Code",
-            var x when x.Contains("Code - Insiders") => "Visual Studio Code - Insiders",
-            _ => session.TerminalApp
-        };
-
         try
         {
             using var proc = new System.Diagnostics.Process();
@@ -437,7 +422,7 @@ public sealed class AppServices : IDisposable
                 CreateNoWindow = true,
             };
             proc.Start();
-            proc.StandardInput.Write($"tell application \"{app}\" to activate");
+            proc.StandardInput.Write($"tell application \"{session.TerminalApp}\" to activate");
             proc.StandardInput.Close();
             proc.WaitForExit(3000);
         }

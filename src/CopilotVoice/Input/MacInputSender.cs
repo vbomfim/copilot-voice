@@ -8,19 +8,6 @@ public class MacInputSender : IInputSender
 {
     public bool IsSupported => OperatingSystem.IsMacOS();
 
-    private static string MapToMacAppName(string processName) => processName switch
-    {
-        "ghostty" or "Ghostty" => "Ghostty",
-        "iTerm2" or "iterm2" or "iTermServer-main" => "iTerm",
-        "kitty" => "kitty",
-        "Alacritty" or "alacritty" => "Alacritty",
-        "wezterm-gui" or "WezTerm" => "WezTerm",
-        "Hyper" => "Hyper",
-        var x when x.Contains("Code - Insiders") => "Visual Studio Code - Insiders",
-        var x when x.Contains("Code") => "Visual Studio Code",
-        _ => processName
-    };
-
     // CGEvent P/Invoke for direct keystroke sending (no osascript needed)
     [DllImport("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics")]
     private static extern IntPtr CGEventCreateKeyboardEvent(IntPtr source, ushort keycode, bool keyDown);
@@ -61,26 +48,11 @@ public class MacInputSender : IInputSender
             await proc.WaitForExitAsync();
         }
 
-        // Activate the target app via stdin (avoids shell quoting issues)
-        using (var proc = new Process())
-        {
-            var app = MapToMacAppName(session.TerminalApp ?? "Terminal");
-            proc.StartInfo = new ProcessStartInfo
-            {
-                FileName = "osascript",
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            proc.Start();
-            await proc.StandardInput.WriteAsync($"tell application \"{app}\" to activate");
-            proc.StandardInput.Close();
-            await proc.WaitForExitAsync();
-        }
+        // Activate the target app via osascript
+        await ActivateAppAsync(session.TerminalApp ?? "Terminal");
+        await Task.Delay(300);
 
-        await Task.Delay(150);
-
-        // Cmd+V via CGEvent (uses CopilotVoice's own Accessibility permission)
+        // Cmd+V via CGEvent
         SendKeyCombo(kVK_V, kCGEventFlagMaskCommand);
 
         if (pressEnter)
@@ -88,28 +60,24 @@ public class MacInputSender : IInputSender
             // Scale delay with text length — longer text needs more time to paste
             var pasteDelay = Math.Max(500, Math.Min(2000, text.Length * 5));
             await Task.Delay(pasteDelay);
-
-            // Re-activate the target app before pressing Enter
-            // (focus may have shifted during paste processing)
-            using (var proc = new Process())
-            {
-                var app = MapToMacAppName(session.TerminalApp ?? "Terminal");
-                proc.StartInfo = new ProcessStartInfo
-                {
-                    FileName = "osascript",
-                    RedirectStandardInput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                proc.Start();
-                await proc.StandardInput.WriteAsync($"tell application \"{app}\" to activate");
-                proc.StandardInput.Close();
-                await proc.WaitForExitAsync();
-            }
-            await Task.Delay(200);
-
             SendKey(kVK_Return);
         }
+    }
+
+    private static async Task ActivateAppAsync(string appName)
+    {
+        using var proc = new Process();
+        proc.StartInfo = new ProcessStartInfo
+        {
+            FileName = "osascript",
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        proc.Start();
+        await proc.StandardInput.WriteAsync($"tell application \"{appName}\" to activate");
+        proc.StandardInput.Close();
+        await proc.WaitForExitAsync();
     }
 
     private static void SendKey(ushort keycode)

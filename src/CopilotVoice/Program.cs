@@ -121,8 +121,8 @@ class Program
         if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)
             && !string.IsNullOrEmpty(terminalApp))
         {
-            // Map process name to macOS app name
-            var appName = terminalApp switch
+            // Map process name to macOS app name (used for osascript and stored in session)
+            terminalApp = terminalApp switch
             {
                 "ghostty" => "Ghostty",
                 "iTerm2" or "iTermServer-main" => "iTerm2",
@@ -130,14 +130,16 @@ class Program
                 "kitty" => "kitty",
                 "Alacritty" or "alacritty" => "Alacritty",
                 "wezterm-gui" => "WezTerm",
-                var x when x.Contains("Code") => "Code",
+                "Hyper" => "Hyper",
+                var x when x.Contains("Code - Insiders") => "Visual Studio Code - Insiders",
+                var x when x.Contains("Code") => "Visual Studio Code",
                 _ => terminalApp
             };
 
             try
             {
                 var title = Sessions.SessionDetector.RunCommandStatic("osascript",
-                    $"-e \"tell application \\\"{appName}\\\" to get name of front window\"").Trim();
+                    $"-e \"tell application \\\"{terminalApp}\\\" to get name of front window\"").Trim();
                 if (!string.IsNullOrEmpty(title))
                     windowTitle = title;
             }
