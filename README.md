@@ -94,7 +94,7 @@ MCP gives Copilot CLI native tools like `speak`, `listen`, `set_avatar`, `notify
 {
   "mcpServers": {
     "copilot-voice": {
-      "type": "http",
+      "type": "sse",
       "url": "http://localhost:7702/sse"
     }
   }
@@ -107,7 +107,7 @@ MCP gives Copilot CLI native tools like `speak`, `listen`, `set_avatar`, `notify
 {
   "mcpServers": {
     "copilot-voice": {
-      "type": "http",
+      "type": "sse",
       "url": "http://localhost:7702/sse"
     }
   }
