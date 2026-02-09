@@ -49,6 +49,73 @@ export AZURE_SPEECH_REGION=centralus
 ./copilot-voice --auth signin
 ```
 
+## Copilot CLI Integration
+
+Copilot Voice works as a companion to GitHub Copilot CLI. Once running, Copilot CLI can speak to you, and you can speak to it.
+
+### Step 1: Start Copilot Voice
+
+```bash
+# Start the app (runs in the background with tray icon)
+copilot-voice
+```
+
+### Step 2: Register your terminal session
+
+From the terminal where you use Copilot CLI, register it so Copilot Voice knows where to send transcriptions:
+
+```bash
+copilot-voice --register                       # auto-detects terminal and working directory
+copilot-voice --register --label "my-project"  # with a custom label
+```
+
+### Step 3: Add voice instructions for Copilot CLI
+
+Add the following to `.github/copilot-instructions.md` in any repository to teach Copilot CLI to use voice:
+
+```markdown
+## Voice Communication
+Copilot Voice is running as a companion app. Use it to speak to the user.
+
+### When to speak
+- Status updates: "Build passed", "Tests done", "PR created"
+- Questions: "Should I fix this or skip it? Check the terminal for details"
+- Completion: "All done! Check the terminal for the summary"
+- Errors: "Build failed, take a look at the terminal"
+
+### How to speak (TTS with avatar animation)
+curl -s -X POST http://localhost:7701/speak \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Your short summary here"}'
+
+### How to show a notification (visual only, no voice)
+curl -s -X POST http://localhost:7701/bubble \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Your notification here"}'
+
+### Rules
+- Keep it short: 1-2 sentences. Summarize, don't repeat everything.
+- Details stay in the terminal — the user can always read the full output there.
+- Don't narrate every step. Only speak on meaningful events.
+- Use /speak for important things, /bubble for minor FYI.
+```
+
+### Step 4: Use voice
+
+- **Voice In**: Hold the hotkey (default: `Alt+Space`), speak, release — your words are transcribed and sent to Copilot CLI
+- **Voice Out**: Copilot CLI calls `/speak` to talk back to you through the avatar
+
+### Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/speak` | POST | Speak text aloud via TTS with avatar animation |
+| `/bubble` | POST | Show visual speech bubble (no audio) |
+| `/register` | POST | Register a terminal session |
+
+All endpoints are on `http://localhost:7701`.
+
 ## Requirements
 
 - Azure Speech Services resource (F0 free tier: 5h STT + 500K chars TTS/month)
@@ -114,6 +181,9 @@ Options:
   --theme <name>      Avatar theme: robot, waveform, symbols
   --session <id>      Target a specific session (skip picker)
   --list-sessions     List active Copilot CLI sessions and exit
+  --register          Register current terminal as a Copilot CLI session
+  --label <name>      Custom label for --register (default: window title)
+  --mcp               Run as MCP server (stdio JSON-RPC)
   --pomodoro <cmd>    Start/stop pomodoro (start[:work:break] | stop)
 
 Environment variables:
