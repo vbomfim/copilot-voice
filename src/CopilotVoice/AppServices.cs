@@ -488,6 +488,11 @@ public sealed class AppServices : IDisposable
         {
             _tts?.Stop();
             try { if (_activeAudioProcess is { HasExited: false } p) p.Kill(); } catch { }
+            Animator.SetExpression(UI.Avatar.AvatarExpression.Muted);
+        }
+        else
+        {
+            Animator.SetExpression(UI.Avatar.AvatarExpression.Normal);
         }
         OnMuteChanged?.Invoke(_isMuted);
     }
