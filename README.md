@@ -94,10 +94,12 @@ curl -s -X POST http://localhost:7701/bubble \
   -d '{"text":"Your notification here"}'
 
 ### Rules
+- Always use voice for questions — if you need user input, speak the question.
 - Keep it short: 1-2 sentences. Summarize, don't repeat everything.
 - Details stay in the terminal — the user can always read the full output there.
 - Don't narrate every step. Only speak on meaningful events.
 - Use /speak for important things, /bubble for minor FYI.
+- After speaking a question, also write it in the terminal so the user can reference it.
 ```
 
 ### Step 4: Use voice
@@ -182,7 +184,7 @@ Options:
   --session <id>      Target a specific session (skip picker)
   --list-sessions     List active Copilot CLI sessions and exit
   --register          Register current terminal as a Copilot CLI session
-  --label <name>      Custom label for --register (default: window title)
+  --label <name>      Custom label for --register (default: terminal window title)
   --mcp               Run as MCP server (stdio JSON-RPC)
   --pomodoro <cmd>    Start/stop pomodoro (start[:work:break] | stop)
 

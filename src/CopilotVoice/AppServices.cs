@@ -431,7 +431,8 @@ public sealed class AppServices : IDisposable
 
     public void RefreshSessions()
     {
-        var sessions = _sessionDetector.DetectSessions();
+        _sessionDetector.DetectSessions();
+        var sessions = _sessionManager.GetAllSessions();
         Log($"Refreshed: {sessions.Count} session(s)");
         OnSessionsRefreshed?.Invoke(sessions);
     }

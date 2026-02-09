@@ -226,8 +226,12 @@ public class SessionDetector
 
             // Fallback: try procfs on Linux
             var procPath = $"/proc/{pid}/cwd";
-            if (Directory.Exists("/proc") && File.Exists(procPath))
-                return Path.GetFullPath(procPath);
+            if (Directory.Exists("/proc"))
+            {
+                var linkTarget = new DirectoryInfo(procPath).ResolveLinkTarget(returnFinalTarget: true);
+                if (linkTarget != null)
+                    return linkTarget.FullName;
+            }
 
             return null;
         }

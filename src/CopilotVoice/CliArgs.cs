@@ -80,7 +80,7 @@ public class CliArgs
               --session <id>      Target a specific session
               --list-sessions     List active Copilot CLI sessions and exit
               --register          Register current terminal as a Copilot CLI session
-              --label <name>      Custom label for --register (default: working directory)
+              --label <name>      Custom label for --register (default: terminal window title)
               --mcp               Run as MCP server (stdio JSON-RPC)
               --help, -h          Show this help message
 

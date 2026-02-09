@@ -223,11 +223,13 @@ public class MessageListener : IDisposable
             try
             {
                 var result = await OnRegisterReceived(reg);
-                await WriteResponse(response, 200, $"{{\"status\":\"registered\",\"label\":\"{result}\"}}");
+                var responseObj = JsonSerializer.Serialize(new { status = "registered", label = result });
+                await WriteResponse(response, 200, responseObj);
             }
             catch (Exception ex)
             {
-                await WriteResponse(response, 500, $"{{\"error\":\"{ex.Message}\"}}");
+                var errorObj = JsonSerializer.Serialize(new { error = ex.Message });
+                await WriteResponse(response, 500, errorObj);
             }
         }
         else

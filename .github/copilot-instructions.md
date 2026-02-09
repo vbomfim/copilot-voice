@@ -30,10 +30,12 @@ curl -s -X POST http://localhost:7701/bubble \
 ```
 
 ### Rules
+- **Always use voice for questions** — if you need user input, speak the question via `/speak`. Don't just write it in the terminal.
 - **Keep it short**: 1-2 sentences max. Summarize, don't repeat everything.
 - **Details stay in terminal**: The user can always read the full output in the terminal.
 - **Don't narrate every step**: Only speak on meaningful events (done, error, question, milestone).
 - **Use bubble for minor updates**: Use `/speak` for important things, `/bubble` for FYI.
+- After speaking a question, also write it in the terminal so the user can reference it.
 
 ## Development Rules
 - **Branch per issue**: `issue-<N>-<short-name>`, never commit to `main`

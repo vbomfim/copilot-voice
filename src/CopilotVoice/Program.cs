@@ -162,7 +162,7 @@ class Program
 
         try
         {
-            var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            using var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
             var response = await httpClient.PostAsync("http://localhost:7701/register", content);
             var body = await response.Content.ReadAsStringAsync();
 

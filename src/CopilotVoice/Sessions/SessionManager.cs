@@ -133,16 +133,15 @@ public class SessionManager : IDisposable
                 }
                 else if (Mode == SessionTargetMode.Locked && _lockedSession != null)
                 {
-                    // Registered sessions are always considered alive
-                    if (_lockedSession.IsRegistered)
-                        continue;
-
-                    // Check if locked session is still alive
-                    var sessions = _detector.GetCachedSessions();
-                    if (!sessions.Any(s => s.Id == _lockedSession.Id))
+                    // Registered sessions are always considered alive — skip liveness check
+                    if (!_lockedSession.IsRegistered)
                     {
-                        Unlock();
-                        OnTargetChanged?.Invoke(null);
+                        var sessions = _detector.GetCachedSessions();
+                        if (!sessions.Any(s => s.Id == _lockedSession.Id))
+                        {
+                            Unlock();
+                            OnTargetChanged?.Invoke(null);
+                        }
                     }
                 }
             }
