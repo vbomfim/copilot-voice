@@ -3,6 +3,7 @@ namespace CopilotVoice.Sessions;
 public class SessionManager : IDisposable
 {
     private readonly SessionDetector _detector;
+    private readonly List<CopilotSession> _registeredSessions = new();
     private CopilotSession? _lockedSession;
     private CopilotSession? _currentTarget;
     private CancellationTokenSource? _watchCts;
@@ -43,6 +44,44 @@ public class SessionManager : IDisposable
     public void SelectSession(CopilotSession session)
     {
         LockToSession(session);
+    }
+
+    public CopilotSession RegisterSession(Messaging.RegisterRequest request)
+    {
+        // Remove existing registration for same PID or same working directory
+        _registeredSessions.RemoveAll(s =>
+            s.ProcessId == request.Pid ||
+            (!string.IsNullOrEmpty(request.WorkingDirectory) &&
+             s.WorkingDirectory == request.WorkingDirectory));
+
+        var cwd = !string.IsNullOrEmpty(request.WorkingDirectory)
+            ? request.WorkingDirectory
+            : Environment.CurrentDirectory;
+
+        var session = new CopilotSession
+        {
+            Id = $"registered-{request.Pid}",
+            ProcessId = request.Pid,
+            WorkingDirectory = cwd,
+            TerminalApp = !string.IsNullOrEmpty(request.TerminalApp) ? request.TerminalApp : "Terminal",
+            TerminalTitle = !string.IsNullOrEmpty(request.Label) ? request.Label : $"Copilot CLI (PID {request.Pid})",
+            IsRegistered = true
+        };
+
+        _registeredSessions.Add(session);
+        return session;
+    }
+
+    /// <summary>
+    /// Returns registered sessions first, then auto-detected sessions (excluding duplicates).
+    /// </summary>
+    public List<CopilotSession> GetAllSessions()
+    {
+        var detected = _detector.GetCachedSessions();
+        var registeredPids = new HashSet<int>(_registeredSessions.Select(s => s.ProcessId));
+        var combined = new List<CopilotSession>(_registeredSessions);
+        combined.AddRange(detected.Where(s => !registeredPids.Contains(s.ProcessId)));
+        return combined;
     }
 
     public CopilotSession? GetTargetSession()
@@ -94,12 +133,15 @@ public class SessionManager : IDisposable
                 }
                 else if (Mode == SessionTargetMode.Locked && _lockedSession != null)
                 {
-                    // Check if locked session is still alive
-                    var sessions = _detector.GetCachedSessions();
-                    if (!sessions.Any(s => s.Id == _lockedSession.Id))
+                    // Registered sessions are always considered alive — skip liveness check
+                    if (!_lockedSession.IsRegistered)
                     {
-                        Unlock();
-                        OnTargetChanged?.Invoke(null);
+                        var sessions = _detector.GetCachedSessions();
+                        if (!sessions.Any(s => s.Id == _lockedSession.Id))
+                        {
+                            Unlock();
+                            OnTargetChanged?.Invoke(null);
+                        }
                     }
                 }
             }

@@ -48,35 +48,36 @@ public class MacInputSender : IInputSender
             await proc.WaitForExitAsync();
         }
 
-        // Activate the target app via stdin (avoids shell quoting issues)
-        using (var proc = new Process())
-        {
-            var app = session.TerminalApp ?? "Terminal";
-            proc.StartInfo = new ProcessStartInfo
-            {
-                FileName = "osascript",
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            proc.Start();
-            await proc.StandardInput.WriteAsync($"tell application \"{app}\" to activate");
-            proc.StandardInput.Close();
-            await proc.WaitForExitAsync();
-        }
+        // Activate the target app via osascript
+        await ActivateAppAsync(session.TerminalApp ?? "Terminal");
+        await Task.Delay(300);
 
-        await Task.Delay(150);
-
-        // Cmd+V via CGEvent (uses CopilotVoice's own Accessibility permission)
+        // Cmd+V via CGEvent
         SendKeyCombo(kVK_V, kCGEventFlagMaskCommand);
 
         if (pressEnter)
         {
-            await Task.Delay(300);
-            SendKey(kVK_Return);
-            await Task.Delay(150);
+            // Scale delay with text length — longer text needs more time to paste
+            var pasteDelay = Math.Max(500, Math.Min(2000, text.Length * 5));
+            await Task.Delay(pasteDelay);
             SendKey(kVK_Return);
         }
+    }
+
+    private static async Task ActivateAppAsync(string appName)
+    {
+        using var proc = new Process();
+        proc.StartInfo = new ProcessStartInfo
+        {
+            FileName = "osascript",
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        proc.Start();
+        await proc.StandardInput.WriteAsync($"tell application \"{appName}\" to activate");
+        proc.StandardInput.Close();
+        await proc.WaitForExitAsync();
     }
 
     private static void SendKey(ushort keycode)

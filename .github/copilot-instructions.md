@@ -6,6 +6,37 @@
 3. Read [CONTRIBUTING.md](../CONTRIBUTING.md) for git workflow
 4. Check the issue description for acceptance criteria and linked docs
 
+## Voice Communication
+Copilot Voice is running as a companion app. Use it to **speak** to the user:
+
+### When to speak
+- **Status updates**: "Build passed", "Tests done, 2 failures", "PR created"
+- **Questions**: "Should I fix this test or skip it? Check the terminal for details"
+- **Completion**: "All done! PR 47 is ready for review"
+- **Errors**: "Build failed, check the terminal"
+
+### How to speak
+```bash
+curl -s -X POST http://localhost:7701/speak \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Your short summary here"}'
+```
+
+### How to show a bubble (no voice, just visual)
+```bash
+curl -s -X POST http://localhost:7701/bubble \
+  -H "Content-Type: application/json" \
+  -d '{"text":"Your notification here"}'
+```
+
+### Rules
+- **Always use voice for questions** — if you need user input, speak the question via `/speak`. Don't just write it in the terminal.
+- **Keep it short**: 1-2 sentences max. Summarize, don't repeat everything.
+- **Details stay in terminal**: The user can always read the full output in the terminal.
+- **Don't narrate every step**: Only speak on meaningful events (done, error, question, milestone).
+- **Use bubble for minor updates**: Use `/speak` for important things, `/bubble` for FYI.
+- After speaking a question, also write it in the terminal so the user can reference it.
+
 ## Development Rules
 - **Branch per issue**: `issue-<N>-<short-name>`, never commit to `main`
 - **Frequent commits**: one per logical step, not one giant commit

@@ -8,17 +8,35 @@ public class CopilotSession
     public string WorkingDirectory { get; set; } = string.Empty;
     public string TerminalApp { get; set; } = string.Empty;
     public bool IsFocused { get; set; }
+    public bool IsRegistered { get; set; }
     public string Label
     {
         get
         {
-            if (string.IsNullOrEmpty(WorkingDirectory) || WorkingDirectory == "unknown")
-                return !string.IsNullOrEmpty(TerminalTitle) ? TerminalTitle : $"Session {ProcessId}";
+            // For registered sessions, prefer the terminal title (window name)
+            string? name = null;
+            if (IsRegistered && !string.IsNullOrEmpty(TerminalTitle)
+                && !TerminalTitle.StartsWith("Copilot CLI (PID"))
+                name = TerminalTitle;
 
-            var basename = Path.GetFileName(
-                WorkingDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+            if (name == null)
+            {
+                var basename = string.Empty;
+                if (!string.IsNullOrEmpty(WorkingDirectory) && WorkingDirectory != "unknown")
+                {
+                    basename = Path.GetFileName(
+                        WorkingDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
 
-            return string.IsNullOrEmpty(basename) ? TerminalTitle : basename;
+                name = !string.IsNullOrEmpty(basename)
+                    ? basename
+                    : !string.IsNullOrEmpty(TerminalTitle) ? TerminalTitle : $"Session {ProcessId}";
+            }
+
+            if (!string.IsNullOrEmpty(TerminalApp) && TerminalApp != "Terminal")
+                return $"{name} ({TerminalApp})";
+
+            return name;
         }
     }
 

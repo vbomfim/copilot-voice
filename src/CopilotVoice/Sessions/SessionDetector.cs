@@ -57,19 +57,44 @@ public class SessionDetector
         }
     }
 
+    // Patterns that identify actual Copilot CLI processes
+    private static readonly string[] CopilotCliPatterns = new[]
+    {
+        "gh copilot",
+        "github-copilot",
+        "copilot-cli",
+        "@githubnext/github-copilot-cli",
+    };
+
+    // Patterns to exclude (VS Code extensions, language servers, etc.)
+    private static readonly string[] ExcludePatterns = new[]
+    {
+        "copilot-voice",
+        "Code Helper",
+        "Code - Insiders Helper",
+        "copilot-agent",
+        "copilot-language-server",
+        "copilot-lsp",
+        "grep",
+    };
+
+    internal static bool IsCopilotCliProcess(string processLine)
+    {
+        if (ExcludePatterns.Any(ex => processLine.Contains(ex, StringComparison.OrdinalIgnoreCase)))
+            return false;
+        return CopilotCliPatterns.Any(pat => processLine.Contains(pat, StringComparison.OrdinalIgnoreCase));
+    }
+
     private List<CopilotSession> DetectMacSessions()
     {
         var sessions = new List<CopilotSession>();
 
         try
         {
-            // Find copilot-related processes
             var psOutput = RunCommand("ps", "aux");
             var copilotProcesses = psOutput
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries)
-                .Where(line => line.Contains("copilot", StringComparison.OrdinalIgnoreCase)
-                            && !line.Contains("copilot-voice", StringComparison.OrdinalIgnoreCase)
-                            && !line.Contains("grep", StringComparison.OrdinalIgnoreCase))
+                .Where(IsCopilotCliProcess)
                 .ToList();
 
             foreach (var proc in copilotProcesses)
@@ -192,10 +217,23 @@ public class SessionDetector
     {
         try
         {
-            var output = RunCommand("lsof", $"-p {pid} -Fn");
-            var cwdLine = output.Split('\n')
-                .FirstOrDefault(l => l.StartsWith("n") && l.Contains("/"));
-            return cwdLine?[1..]; // Remove 'n' prefix
+            // Use lsof to find the cwd file descriptor specifically
+            var output = RunCommand("lsof", $"-a -p {pid} -d cwd -Fn");
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            var cwdLine = lines.FirstOrDefault(l => l.StartsWith("n/"));
+            if (cwdLine != null)
+                return cwdLine[1..]; // Remove 'n' prefix
+
+            // Fallback: try procfs on Linux
+            var procPath = $"/proc/{pid}/cwd";
+            if (Directory.Exists("/proc"))
+            {
+                var linkTarget = new DirectoryInfo(procPath).ResolveLinkTarget(returnFinalTarget: true);
+                if (linkTarget != null)
+                    return linkTarget.FullName;
+            }
+
+            return null;
         }
         catch { return null; }
     }
@@ -242,6 +280,9 @@ public class SessionDetector
         // TODO: Implement Windows detection via Process API
         return new List<CopilotSession>();
     }
+
+    internal static string RunCommandStatic(string command, string arguments) =>
+        RunCommand(command, arguments);
 
     private static string RunCommand(string command, string arguments)
     {

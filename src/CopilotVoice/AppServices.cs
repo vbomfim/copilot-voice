@@ -180,6 +180,14 @@ public sealed class AppServices : IDisposable
             {
                 OnSpeechBubble?.Invoke(msg.Text, null);
             };
+            _messageListener.OnRegisterReceived += async reg =>
+            {
+                var session = _sessionManager.RegisterSession(reg);
+                Log($"Session registered: {session.Label} (PID {session.ProcessId})");
+                _sessionManager.LockToSession(session);
+                OnSessionsRefreshed?.Invoke(_sessionManager.GetAllSessions());
+                return session.Label;
+            };
             _messageListener.Start();
             Log("Message listener: localhost:7701");
         }
@@ -395,11 +403,36 @@ public sealed class AppServices : IDisposable
     {
         _sessionManager.SelectSession(session);
         Log($"Selected session: {session.Label}");
+        ActivateSessionWindow(session);
+    }
+
+    private static void ActivateSessionWindow(CopilotSession session)
+    {
+        if (!OperatingSystem.IsMacOS() || string.IsNullOrEmpty(session.TerminalApp))
+            return;
+
+        try
+        {
+            using var proc = new System.Diagnostics.Process();
+            proc.StartInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "osascript",
+                RedirectStandardInput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            proc.Start();
+            proc.StandardInput.Write($"tell application \"{session.TerminalApp}\" to activate");
+            proc.StandardInput.Close();
+            proc.WaitForExit(3000);
+        }
+        catch { /* best effort */ }
     }
 
     public void RefreshSessions()
     {
-        var sessions = _sessionDetector.DetectSessions();
+        _sessionDetector.DetectSessions();
+        var sessions = _sessionManager.GetAllSessions();
         Log($"Refreshed: {sessions.Count} session(s)");
         OnSessionsRefreshed?.Invoke(sessions);
     }
