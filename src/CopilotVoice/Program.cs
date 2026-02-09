@@ -116,14 +116,28 @@ class Program
         }
         catch { /* use own PID as fallback */ }
 
-        // Try to get the terminal window title via osascript
+        // Try to get the window title of our terminal app (not just frontmost)
         var windowTitle = string.Empty;
-        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+        if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)
+            && !string.IsNullOrEmpty(terminalApp))
         {
+            // Map process name to macOS app name
+            var appName = terminalApp switch
+            {
+                "ghostty" => "Ghostty",
+                "iTerm2" or "iTermServer-main" => "iTerm2",
+                "Terminal" => "Terminal",
+                "kitty" => "kitty",
+                "Alacritty" or "alacritty" => "Alacritty",
+                "wezterm-gui" => "WezTerm",
+                var x when x.Contains("Code") => "Code",
+                _ => terminalApp
+            };
+
             try
             {
                 var title = Sessions.SessionDetector.RunCommandStatic("osascript",
-                    "-e \"tell application \\\"System Events\\\" to get name of first window of (first application process whose frontmost is true)\"").Trim();
+                    $"-e \"tell application \\\"{appName}\\\" to get name of front window\"").Trim();
                 if (!string.IsNullOrEmpty(title))
                     windowTitle = title;
             }
