@@ -46,6 +46,13 @@ class Program
             return;
         }
 
+        // One-shot: register this terminal as a session
+        if (cliArgs.RegisterSession)
+        {
+            RegisterSessionAsync(cliArgs).GetAwaiter().GetResult();
+            return;
+        }
+
         // Apply CLI overrides via environment (AppServices reads them)
         if (cliArgs.Key != null) Environment.SetEnvironmentVariable("AZURE_SPEECH_KEY", cliArgs.Key);
         if (cliArgs.Region != null) Environment.SetEnvironmentVariable("AZURE_SPEECH_REGION", cliArgs.Region);
@@ -67,6 +74,49 @@ class Program
         catch (Exception ex)
         {
             CrashLog($"[CRASH] Avalonia: {ex}");
+        }
+    }
+
+    /// <summary>
+    /// One-shot: register the calling terminal as a Copilot CLI session
+    /// by POSTing to the running tray app's HTTP listener.
+    /// </summary>
+    private static async Task RegisterSessionAsync(CliArgs cliArgs)
+    {
+        var parentPid = Environment.ProcessId;
+        try
+        {
+            // Try to get parent PID (the actual terminal shell)
+            var ppidStr = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {parentPid} -o ppid=").Trim();
+            if (int.TryParse(ppidStr, out var ppid))
+                parentPid = ppid;
+        }
+        catch { /* use own PID as fallback */ }
+
+        var request = new Messaging.RegisterRequest
+        {
+            Pid = parentPid,
+            WorkingDirectory = Environment.CurrentDirectory,
+            Label = cliArgs.RegisterLabel ?? string.Empty
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(request);
+        using var httpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+
+        try
+        {
+            var content = new System.Net.Http.StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            var response = await httpClient.PostAsync("http://localhost:7701/register", content);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+                Console.WriteLine($"✅ Session registered: PID {parentPid}, cwd: {Environment.CurrentDirectory}");
+            else
+                Console.Error.WriteLine($"❌ Registration failed: {body}");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"❌ Cannot connect to copilot-voice (is it running?): {ex.Message}");
         }
     }
 

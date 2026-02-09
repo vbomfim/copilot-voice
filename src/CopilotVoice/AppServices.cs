@@ -180,6 +180,14 @@ public sealed class AppServices : IDisposable
             {
                 OnSpeechBubble?.Invoke(msg.Text, null);
             };
+            _messageListener.OnRegisterReceived += async reg =>
+            {
+                var session = _sessionManager.RegisterSession(reg);
+                Log($"Session registered: {session.Label} (PID {session.ProcessId})");
+                _sessionManager.LockToSession(session);
+                OnSessionsRefreshed?.Invoke(_sessionManager.GetAllSessions());
+                return session.Label;
+            };
             _messageListener.Start();
             Log("Message listener: localhost:7701");
         }

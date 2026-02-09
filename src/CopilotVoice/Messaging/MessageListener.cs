@@ -20,6 +20,7 @@ public class MessageListener : IDisposable
 
     public event Action<InboundMessage>? OnMessageReceived;
     public event Action<InboundMessage>? OnBubbleReceived;
+    public event Func<RegisterRequest, Task<string>>? OnRegisterReceived;
 
     public MessageListener(int port = 7701)
     {
@@ -94,6 +95,12 @@ public class MessageListener : IDisposable
             if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/bubble")
             {
                 await HandleBubble(request, response);
+                return;
+            }
+
+            if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/register")
+            {
+                await HandleRegister(request, response);
                 return;
             }
 
@@ -184,6 +191,49 @@ public class MessageListener : IDisposable
 
         OnBubbleReceived?.Invoke(message);
         await WriteResponse(response, 200, """{"status":"ok"}""");
+    }
+
+    private async Task HandleRegister(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        string body;
+        using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
+        {
+            body = await reader.ReadToEndAsync();
+        }
+
+        RegisterRequest? reg;
+        try
+        {
+            reg = JsonSerializer.Deserialize<RegisterRequest>(body, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            await WriteResponse(response, 400, """{"error":"malformed JSON"}""");
+            return;
+        }
+
+        if (reg is null || reg.Pid <= 0)
+        {
+            await WriteResponse(response, 400, """{"error":"missing required field: pid"}""");
+            return;
+        }
+
+        if (OnRegisterReceived != null)
+        {
+            try
+            {
+                var result = await OnRegisterReceived(reg);
+                await WriteResponse(response, 200, $"{{\"status\":\"registered\",\"label\":\"{result}\"}}");
+            }
+            catch (Exception ex)
+            {
+                await WriteResponse(response, 500, $"{{\"error\":\"{ex.Message}\"}}");
+            }
+        }
+        else
+        {
+            await WriteResponse(response, 503, """{"error":"registration not available"}""");
+        }
     }
 
     private static async Task WriteResponse(HttpListenerResponse response, int statusCode, string json)

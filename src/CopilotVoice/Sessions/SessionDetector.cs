@@ -277,6 +277,9 @@ public class SessionDetector
         return new List<CopilotSession>();
     }
 
+    internal static string RunCommandStatic(string command, string arguments) =>
+        RunCommand(command, arguments);
+
     private static string RunCommand(string command, string arguments)
     {
         using var process = new Process();
