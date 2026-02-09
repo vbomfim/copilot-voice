@@ -20,6 +20,7 @@ public class PixelAvatarControl : Control
     private static readonly SolidColorBrush Cyan = new(Color.Parse("#9BDCDF"));
     private static readonly SolidColorBrush Green = new(Color.Parse("#8ABC81"));
     private static readonly SolidColorBrush Dark = new(Color.Parse("#CDD6F4")); // default/face
+    private static readonly SolidColorBrush Red = new(Color.Parse("#F38BA8"));  // muted X
 
     // Per-character color map: P=purple, C=cyan, G=green, .=default
     // Rows 0-4 and 8 are the same for all expressions; rows 5-7 vary
@@ -82,6 +83,12 @@ public class PixelAvatarControl : Control
             "PPPP.....G..G.....PPPP",  // row 6: tears near eyes
             "PPPPP............PPPPP",  // row 7
         ],
+        // Muted: red X mouth
+        ["muted"] = [
+            "PPPP.....G..G.....PPPP",  // row 5: normal eyes
+            "PPPP.....G..G.....PPPP",  // row 6: normal eyes
+            "PPPPP.....RR.....PPPPP",  // row 7: red ✕✕
+        ],
     };
 
     private static readonly string ColorMapRow8 = "...PPPPPPPPPPPPPPPP...";  // row 8: jaw purple
@@ -97,6 +104,7 @@ public class PixelAvatarControl : Control
             AvatarExpression.Listening => "listen",
             AvatarExpression.Smile => "smile",
             AvatarExpression.Cry => "cry",
+            AvatarExpression.Muted => "muted",
             _ => "normal",
         };
         var bottom = EyeMouthColors[key];
@@ -131,6 +139,7 @@ public class PixelAvatarControl : Control
                 'P' => Purple,
                 'C' => Cyan,
                 'G' => Green,
+                'R' => Red,
                 _ => Dark,
             };
         }
