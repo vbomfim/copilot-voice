@@ -87,8 +87,8 @@ class Program
         var terminalApp = string.Empty;
         try
         {
-            // Walk up the process tree past shells to find the terminal emulator
-            var shells = new[] { "login", "zsh", "bash", "sh", "fish", "nu", "dotnet" };
+            // Walk up the process tree past shells and intermediaries to find the terminal emulator
+            var skipProcesses = new[] { "login", "zsh", "bash", "sh", "fish", "nu", "dotnet", "copilot", "gh", "node" };
             var currentPid = Environment.ProcessId;
 
             while (true)
@@ -100,15 +100,15 @@ class Program
                 var comm = Sessions.SessionDetector.RunCommandStatic("ps", $"-p {ppid} -o comm=").Trim();
                 var commName = Path.GetFileName(comm);
 
-                if (shells.Any(s => commName.Equals(s, StringComparison.OrdinalIgnoreCase)))
+                if (skipProcesses.Any(s => commName.Equals(s, StringComparison.OrdinalIgnoreCase))
+                    || commName.StartsWith("-")) // login shells like -/bin/zsh
                 {
-                    // This is a shell — record as parentPid but keep walking
                     parentPid = ppid;
                     currentPid = ppid;
                     continue;
                 }
 
-                // Found a non-shell parent — this is likely the terminal emulator
+                // Found a non-shell, non-intermediary parent — likely the terminal emulator
                 parentPid = ppid;
                 terminalApp = commName;
                 break;
