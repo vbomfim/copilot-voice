@@ -77,6 +77,13 @@ public sealed class SymbolsTheme : IAvatarTheme
             "    ◇    ",
             "     zzz ",
         },
+        AvatarExpression.Concerned => new[]
+        {
+            "    ◆    ",
+            "  ◆ ⚠ ◆  ",
+            "    ◆    ",
+            "     !   ",
+        },
         _ => RenderFrame(AvatarExpression.Normal),
     };
 }

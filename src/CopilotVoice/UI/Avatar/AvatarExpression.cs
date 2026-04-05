@@ -18,7 +18,8 @@ public enum AvatarExpression
     Sleeping,
     Smile,
     Cry,
-    Muted
+    Muted,
+    Concerned
 }
 
 /// <summary>

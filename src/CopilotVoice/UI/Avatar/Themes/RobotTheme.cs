@@ -155,6 +155,19 @@ public sealed class RobotTheme : IAvatarTheme
             "  '-----------'     ",
             "    ||| | |||    zz  ",
         },
+        AvatarExpression.Concerned => new[]
+        {
+            "     .----.          ",
+            "    | [!!] |         ",
+            "  .-----------.     ",
+            " /             \\    ",
+            "|  \\O       O/  |   ",
+            "|               |   ",
+            "|      ~~~      |   ",
+            " \\             /    ",
+            "  '-----------'     ",
+            "    ||| | |||       ",
+        },
         _ => RenderFrame(AvatarExpression.Normal),
     };
 }
