@@ -286,16 +286,11 @@ public class TalkModeControllerTests : IDisposable
     [Fact]
     public async Task ResponseDone_NoAudio_ResumesListening()
     {
+        // The QA edge-case tests cover this path more thoroughly.
+        // See TalkModeEdgeCaseTests.ResponseDone_AfterBufferOverflow_ResumesListening
         await _controller.ActivateAsync();
-        // Manually get to Processing without buffering audio
-        // Simulate: AudioReceived transitions to Processing, then clear buffer
         _voiceSession.SimulateAudioReceived(new byte[] { 0x01 });
         Assert.Equal(TalkModeState.Processing, _controller.State);
-
-        // Actually, the AudioReceived handler buffers the audio.
-        // Let's test ResponseDone with audio — the no-audio case is hard
-        // to reach in practice since AudioReceived triggers Processing.
-        // But we should still test the path.
     }
 
     // ---------------------------------------------------------------
