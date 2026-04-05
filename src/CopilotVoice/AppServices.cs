@@ -1,9 +1,11 @@
 using CopilotVoice.Audio;
+using CopilotVoice.Bridge;
 using CopilotVoice.Config;
 using CopilotVoice.Input;
 using CopilotVoice.Messaging;
 using CopilotVoice.Sessions;
 using CopilotVoice.UI.Avatar;
+using CopilotVoice.Voice;
 
 namespace CopilotVoice;
 
@@ -26,6 +28,11 @@ public sealed class AppServices : IDisposable
     private Hotkey.HotkeyListener? _hotkey;
     private Mcp.McpServer? _mcpServer;
     private Mcp.McpSseTransport? _mcpSseTransport;
+    private BridgeServer? _bridgeServer;
+    private IVoiceLiveSession? _voiceLiveSession;
+    private PushToTalkController? _pttController;
+    private IMicCapture? _micCapture;
+    private IAudioPlayer? _audioPlayer;
     private bool _isRecording;
     private bool _isBusy;
     private bool _disposed;
@@ -286,11 +293,118 @@ public sealed class AppServices : IDisposable
 
         // Start avatar idle animation
         Animator.StartIdleLoop();
+
+        // --- Voice Live API + Push-to-Talk (new architecture) ---
+        await StartVoiceLivePipelineAsync();
+
         OnStateChanged?.Invoke("Ready");
         Log("Ready!");
     }
 
     private readonly SemaphoreSlim _recordLock = new(1, 1);
+
+    /// <summary>
+    /// Initializes the Voice Live API pipeline when credentials are configured:
+    /// BridgeServer → VoiceLiveClient → PushToTalkController, wired to HotkeyListener.
+    /// </summary>
+    private async Task StartVoiceLivePipelineAsync()
+    {
+        // 1. Start the HTTP bridge server (for CLI extension communication)
+        try
+        {
+            _bridgeServer = new BridgeServer();
+            await _bridgeServer.StartAsync();
+            Log("Bridge server: http://127.0.0.1:7701");
+        }
+        catch (Exception ex)
+        {
+            Log($"Bridge server failed: {ex.Message}");
+            return; // Can't continue without the bridge
+        }
+
+        // 2. Connect to Voice Live API (if credentials configured)
+        var endpoint = Config.VoiceLiveEndpoint;
+        var apiKey = Config.VoiceLiveKey
+            ?? Environment.GetEnvironmentVariable("AZURE_VOICELIVE_KEY");
+        var envEndpoint = Environment.GetEnvironmentVariable("AZURE_VOICELIVE_ENDPOINT");
+        if (string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(envEndpoint))
+            endpoint = envEndpoint;
+
+        if (!string.IsNullOrEmpty(endpoint))
+        {
+            try
+            {
+                var voiceConfig = new VoiceLiveConfig(
+                    Endpoint: endpoint,
+                    ApiKey: apiKey,
+                    Model: Config.VoiceLiveModel,
+                    Voice: Config.VoiceLiveVoice
+                );
+
+                var client = new VoiceLiveClient();
+                _voiceLiveSession = await client.ConnectAsync(voiceConfig);
+                Log($"Voice Live API: connected ({Config.VoiceLiveModel})");
+            }
+            catch (Exception ex)
+            {
+                Log($"Voice Live API: {ex.Message}");
+                // Continue without voice — push-to-talk won't work but bridge still serves CLI
+            }
+        }
+        else
+        {
+            Log("Voice Live API: no endpoint configured (push-to-talk disabled)");
+        }
+
+        // 3. Create PushToTalkController if voice session is available
+        if (_voiceLiveSession is not null)
+        {
+            _micCapture = new MicCapture();
+            _audioPlayer = new Audio.AudioPlayer();
+
+            _pttController = new PushToTalkController(
+                _voiceLiveSession,
+                _micCapture,
+                _audioPlayer,
+                _bridgeServer.SessionBridge);
+
+            _pttController.StateChanged += state =>
+            {
+                Log($"PushToTalk: {state}");
+                OnStateChanged?.Invoke(state.ToString());
+            };
+
+            // 4. Wire hotkey to push-to-talk controller
+            if (_hotkey is not null)
+            {
+                _hotkey.OnPushToTalkStart += _pttController.OnHotkeyPressed;
+                _hotkey.OnPushToTalkStop += _pttController.OnHotkeyReleased;
+                Log("Hotkey → PushToTalkController wired");
+            }
+
+            // 5. Wire function call handler for Voice Live API
+            var functionHandler = new FunctionCallHandler(
+                workspaceRoot: Environment.CurrentDirectory,
+                sessionBridge: new BridgeClientAdapter(_bridgeServer.SessionBridge));
+
+            _voiceLiveSession.FunctionCallReceived += async call =>
+            {
+                try
+                {
+                    var result = await functionHandler.HandleAsync(call);
+                    await _voiceLiveSession.SendFunctionResultAsync(call.CallId, result);
+                    Log($"Function call handled: {call.Name}");
+                }
+                catch (Exception ex)
+                {
+                    Log($"Function call error: {ex.Message}");
+                }
+            };
+
+            await _pttController.StartAsync();
+            Log("PushToTalkController: started");
+        }
+    }
 
     // Public wrappers for UI push-to-talk button
     public void OnMicButtonDown() => OnHotkeyDown();
@@ -708,6 +822,11 @@ public sealed class AppServices : IDisposable
         if (_disposed) return;
         _disposed = true;
         _micMonitorCts?.Cancel();
+        _pttController?.StopAsync().Wait(2000);
+        _micCapture?.Dispose();
+        _audioPlayer?.Dispose();
+        _voiceLiveSession?.DisposeAsync().AsTask().Wait(2000);
+        _bridgeServer?.DisposeAsync().AsTask().Wait(2000);
         _mcpSseTransport?.DisposeAsync().AsTask().Wait(2000);
         _hotkey?.Dispose();
         Animator.Dispose();
