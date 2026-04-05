@@ -7,6 +7,7 @@ public class AppConfig
     // Authentication
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AuthMode AuthMode { get; set; } = AuthMode.SignIn;
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? AzureSpeechKey { get; set; }
     public string AzureSpeechRegion { get; set; } = "centralus";
     public string? AzureResourceName { get; set; }
@@ -15,9 +16,6 @@ public class AppConfig
     public string Hotkey { get; set; } = "Alt+Space";
     public string Language { get; set; } = "en-US";
     public List<string>? CustomPhrases { get; set; }
-
-    // Session
-    public string? DefaultSessionId { get; set; }
 
     // Behavior
     public bool ShowRecordingIndicator { get; set; } = true;

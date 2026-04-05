@@ -14,10 +14,8 @@ public class App : Application
     private NativeMenuItem? _hotkeyItem;
     private NativeMenuItem? _micStatusItem;
     private NativeMenuItem? _pomodoroItem;
-    private NativeMenuItem? _sessionsItem;
     private NativeMenuItem? _voiceItem;
     private NativeMenuItem? _muteItem;
-    private NativeMenuItem? _lockToggleItem;
     private NativeMenuItem? _topmostItem;
 
     public override void Initialize()
@@ -67,9 +65,6 @@ public class App : Application
                 Console.WriteLine("[copilot-voice] Tray icon NOT set (null)");
             }
 
-            // On macOS, left-click on tray shows the menu.
-            // Show/Hide is handled via menu items instead.
-
             _services.OnStateChanged += state =>
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                     trayIcon.ToolTipText = $"Copilot Voice — {state}");
@@ -79,21 +74,6 @@ public class App : Application
                 {
                     if (_lastTranscriptionItem != null && !string.IsNullOrEmpty(text))
                         _lastTranscriptionItem.Header = $"🔊 \"{Truncate(text, 30)}\"";
-                });
-
-            _services.OnTimerTick += (phase, remaining) =>
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    if (_pomodoroItem != null)
-                    {
-                        if (phase == null)
-                            _pomodoroItem.Header = "🍅 Pomodoro: Off";
-                        else
-                        {
-                            var icon = phase == "Work" ? "🔨" : "☕";
-                            _pomodoroItem.Header = $"🍅 {icon} {remaining:mm\\:ss} {phase.ToUpper()}";
-                        }
-                    }
                 });
 
             _services.OnMicAvailabilityChanged += available =>
@@ -124,7 +104,6 @@ public class App : Application
             _voiceItem.Menu.Items.Add(item);
         }
 
-        // Find label for current voice
         var currentLabel = Config.AppConfig.AvailableVoices
             .FirstOrDefault(v => v.Name == currentVoice).Label ?? currentVoice;
         _voiceItem.Header = $"🔊 Voice: {currentLabel}";
@@ -139,50 +118,8 @@ public class App : Application
         menu.Add(titleItem);
         menu.Add(new NativeMenuItemSeparator());
 
-        // Sessions section
         if (_services != null)
         {
-            var sessionsHeader = new NativeMenuItem("Active Sessions:") { IsEnabled = false };
-            menu.Add(sessionsHeader);
-
-            _lockToggleItem = new NativeMenuItem("🔓 Auto-select");
-            _lockToggleItem.Click += (_, _) =>
-            {
-                _services?.ToggleSessionLock();
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    if (_lockToggleItem != null)
-                        _lockToggleItem.Header = _services?.IsSessionLocked == true
-                            ? "🔒 Locked" : "🔓 Auto-select";
-                });
-            };
-            menu.Add(_lockToggleItem);
-
-            _sessionsItem = new NativeMenuItem("Sessions") { Menu = new NativeMenu() };
-            _services.OnSessionsRefreshed += sessions =>
-            {
-                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                {
-                    _sessionsItem.Menu!.Items.Clear();
-                    if (sessions.Count == 0)
-                    {
-                        _sessionsItem.Menu.Items.Add(
-                            new NativeMenuItem("No sessions found") { IsEnabled = false });
-                        return;
-                    }
-                    foreach (var s in sessions)
-                    {
-                        var prefix = s.IsFocused ? "● " : "○ ";
-                        var item = new NativeMenuItem($"{prefix}{s.Label}");
-                        var session = s;
-                        item.Click += (_, _) => _services?.SelectSession(session);
-                        _sessionsItem.Menu.Items.Add(item);
-                    }
-                });
-            };
-            menu.Add(_sessionsItem);
-            menu.Add(new NativeMenuItemSeparator());
-
             // Voice submenu
             _voiceItem = new NativeMenuItem($"🔊 Voice: {_services.Config.VoiceName}")
             {
@@ -209,7 +146,7 @@ public class App : Application
         }
 
         // Info section
-        _hotkeyItem = new NativeMenuItem($"⌨️  Hotkey: {_services?.Config.Hotkey ?? "Ctrl+Space"}") { IsEnabled = false };
+        _hotkeyItem = new NativeMenuItem($"⌨️  Hotkey: {_services?.Config.Hotkey ?? "Alt+Space"}") { IsEnabled = false };
         menu.Add(_hotkeyItem);
 
         _micStatusItem = new NativeMenuItem("🎤 Mic: OK") { IsEnabled = false };
@@ -300,10 +237,6 @@ public class App : Application
             });
         };
         menu.Add(resetPosItem);
-
-        var refreshItem = new NativeMenuItem("🔄 Refresh Sessions");
-        refreshItem.Click += (_, _) => _services?.RefreshSessions();
-        menu.Add(refreshItem);
 
         menu.Add(new NativeMenuItemSeparator());
 

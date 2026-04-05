@@ -1,4 +1,3 @@
-using CopilotVoice.Sessions;
 namespace CopilotVoice.UI;
 
 public enum TrayState { Idle, Recording, Transcribing, Speaking, Error, NoSession, Focus, Break }
@@ -10,8 +9,6 @@ public class TrayIcon : IDisposable
 
     public event Action? OnSettingsClicked;
     public event Action? OnQuitClicked;
-    public event Action<CopilotSession>? OnSessionSelected;
-    public event Action? OnLockToggled;
 
     public void Show() { Console.WriteLine("🎤 Copilot Voice - Ready"); }
     public void Hide() { }

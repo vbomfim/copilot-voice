@@ -122,13 +122,6 @@ public partial class AvatarWindow : Window
                 catch (Exception ex) { Console.WriteLine($"[UI] Bubble error: {ex.Message}"); }
             });
 
-        services.OnTargetSession += label =>
-            Dispatcher.UIThread.Post(() =>
-            {
-                try { SessionLabel.Text = $"\U0001f4c2 {label ?? "no session"}"; }
-                catch (Exception ex) { Console.WriteLine($"[UI] Session error: {ex.Message}"); }
-            });
-
         services.OnTranscriptionUpdate += text =>
             Dispatcher.UIThread.Post(() =>
             {
@@ -146,22 +139,6 @@ public partial class AvatarWindow : Window
                     }
                 }
                 catch (Exception ex) { Console.WriteLine($"[UI] Transcription error: {ex.Message}"); }
-            });
-
-        services.OnTimerTick += (phase, remaining) =>
-            Dispatcher.UIThread.Post(() =>
-            {
-                try
-                {
-                    if (phase == null)
-                        TimerLabel.Text = "";
-                    else
-                    {
-                        var icon = phase == "Work" ? "\U0001f528" : "\u2615";
-                        TimerLabel.Text = $"{icon} {phase} {remaining:mm\\:ss}";
-                    }
-                }
-                catch (Exception ex) { Console.WriteLine($"[UI] Timer error: {ex.Message}"); }
             });
 
         services.OnLog += msg =>
