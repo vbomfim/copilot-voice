@@ -32,7 +32,7 @@ public interface IPushToTalkController
 /// Coordinates mic capture, Voice Live API streaming, and audio playback.
 /// All dependencies are injected via interfaces for testability.
 /// </summary>
-public sealed class PushToTalkController : IPushToTalkController
+public sealed class PushToTalkController : IPushToTalkController, IDisposable
 {
     private readonly IVoiceLiveSession _voiceSession;
     private readonly IMicCapture _micCapture;
@@ -43,9 +43,13 @@ public sealed class PushToTalkController : IPushToTalkController
 
     private PushToTalkState _state = PushToTalkState.Idle;
     private long _pressTimestampTicks;
+    private bool _disposed;
 
     /// <summary>Minimum hold duration (ms) to count as a real press, not a cancel.</summary>
     private const int QuickPressCancelMs = 200;
+
+    /// <summary>Maximum audio buffer size (10 MB) to prevent unbounded memory growth.</summary>
+    private const int MaxAudioBufferBytes = 10 * 1024 * 1024;
 
     public PushToTalkState State
     {
@@ -129,6 +133,10 @@ public sealed class PushToTalkController : IPushToTalkController
             else if (_state == PushToTalkState.Playing)
             {
                 StopPlaybackSafe();
+            }
+            else if (_state == PushToTalkState.Processing)
+            {
+                _audioBuffer.Clear();
             }
 
             SetState(PushToTalkState.Idle);
@@ -232,7 +240,18 @@ public sealed class PushToTalkController : IPushToTalkController
         _voiceSession.AudioReceived += OnVoiceAudioReceived;
         _voiceSession.ResponseDone += OnResponseDone;
         _voiceSession.ErrorReceived += OnVoiceError;
+        _voiceSession.Disconnected += OnVoiceDisconnected;
         _audioPlayer.PlaybackCompleted += OnPlaybackCompleted;
+    }
+
+    private void UnwireEvents()
+    {
+        _micCapture.AudioCaptured -= OnAudioCaptured;
+        _voiceSession.AudioReceived -= OnVoiceAudioReceived;
+        _voiceSession.ResponseDone -= OnResponseDone;
+        _voiceSession.ErrorReceived -= OnVoiceError;
+        _voiceSession.Disconnected -= OnVoiceDisconnected;
+        _audioPlayer.PlaybackCompleted -= OnPlaybackCompleted;
     }
 
     private void OnAudioCaptured(ReadOnlyMemory<byte> audio)
@@ -240,8 +259,19 @@ public sealed class PushToTalkController : IPushToTalkController
         if (State != PushToTalkState.Recording)
             return;
 
-        // Fire-and-forget — stream audio to the voice session
-        _ = _voiceSession.SendAudioAsync(audio);
+        _ = SendAudioSafeAsync(audio);
+    }
+
+    private async Task SendAudioSafeAsync(ReadOnlyMemory<byte> audio)
+    {
+        try
+        {
+            await _voiceSession.SendAudioAsync(audio).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log($"SendAudio failed: {ex.Message}");
+        }
     }
 
     private void OnVoiceAudioReceived(ReadOnlyMemory<byte> audio)
@@ -250,6 +280,12 @@ public sealed class PushToTalkController : IPushToTalkController
         {
             if (_state == PushToTalkState.Processing || _state == PushToTalkState.Playing)
             {
+                if (_audioBuffer.Count + audio.Length > MaxAudioBufferBytes)
+                {
+                    Log("Audio buffer exceeded 10MB limit, discarding");
+                    _audioBuffer.Clear();
+                    return;
+                }
                 _audioBuffer.AddRange(audio.ToArray());
             }
         }
@@ -274,6 +310,21 @@ public sealed class PushToTalkController : IPushToTalkController
         }
     }
 
+    private void OnVoiceDisconnected()
+    {
+        lock (_stateLock)
+        {
+            if (_state == PushToTalkState.Idle)
+                return;
+
+            Log("Voice session disconnected, returning to Idle");
+            if (_state == PushToTalkState.Recording) StopMicSafe();
+            if (_state == PushToTalkState.Playing) StopPlaybackSafe();
+            _audioBuffer.Clear();
+            SetState(PushToTalkState.Idle);
+        }
+    }
+
     private void OnPlaybackCompleted()
     {
         lock (_stateLock)
@@ -290,6 +341,8 @@ public sealed class PushToTalkController : IPushToTalkController
     private void SetState(PushToTalkState newState)
     {
         _state = newState;
+        // Event fired inside lock is safe for now — subscribers must not re-enter.
+        // TODO: Move event outside lock if UI dispatching causes issues.
         StateChanged?.Invoke(newState);
     }
 
@@ -313,5 +366,12 @@ public sealed class PushToTalkController : IPushToTalkController
     private static void Log(string message)
     {
         Console.Error.WriteLine($"[PushToTalk] {message}");
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        UnwireEvents();
     }
 }
