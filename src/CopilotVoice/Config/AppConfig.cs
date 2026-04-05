@@ -16,9 +16,6 @@ public class AppConfig
     public string Language { get; set; } = "en-US";
     public List<string>? CustomPhrases { get; set; }
 
-    // Session
-    public string? DefaultSessionId { get; set; }
-
     // Behavior
     public bool ShowRecordingIndicator { get; set; } = true;
     public bool AutoPressEnter { get; set; } = true;

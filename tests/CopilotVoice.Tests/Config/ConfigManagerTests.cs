@@ -48,7 +48,6 @@ public class ConfigManagerTests : IDisposable
             AzureResourceName = "my-resource",
             Hotkey = "Alt+R",
             Language = "pt-BR",
-            DefaultSessionId = "session-42",
             ShowRecordingIndicator = false,
             AutoPressEnter = false,
             PlayConfirmationSound = true,
@@ -64,7 +63,6 @@ public class ConfigManagerTests : IDisposable
         Assert.Equal(original.AzureResourceName, loaded.AzureResourceName);
         Assert.Equal(original.Hotkey, loaded.Hotkey);
         Assert.Equal(original.Language, loaded.Language);
-        Assert.Equal(original.DefaultSessionId, loaded.DefaultSessionId);
         Assert.Equal(original.ShowRecordingIndicator, loaded.ShowRecordingIndicator);
         Assert.Equal(original.AutoPressEnter, loaded.AutoPressEnter);
         Assert.Equal(original.PlayConfirmationSound, loaded.PlayConfirmationSound);
@@ -79,8 +77,6 @@ public class ConfigManagerTests : IDisposable
             "--key", "my-key",
             "--region", "westus2",
             "--hotkey", "Alt+X",
-            "--session", "sess-1",
-            "--list-sessions",
             "--help"
         };
 
@@ -89,8 +85,6 @@ public class ConfigManagerTests : IDisposable
         Assert.Equal("my-key", cli.Key);
         Assert.Equal("westus2", cli.Region);
         Assert.Equal("Alt+X", cli.Hotkey);
-        Assert.Equal("sess-1", cli.SessionId);
-        Assert.True(cli.ListSessions);
         Assert.True(cli.ShowHelp);
     }
 
@@ -101,8 +95,7 @@ public class ConfigManagerTests : IDisposable
         {
             Key = "override-key",
             Region = "northeurope",
-            Hotkey = "Ctrl+M",
-            SessionId = "override-session"
+            Hotkey = "Ctrl+M"
         };
         var config = new AppConfig();
 
@@ -112,6 +105,5 @@ public class ConfigManagerTests : IDisposable
         Assert.Equal(AuthMode.ApiKey, config.AuthMode);
         Assert.Equal("northeurope", config.AzureSpeechRegion);
         Assert.Equal("Ctrl+M", config.Hotkey);
-        Assert.Equal("override-session", config.DefaultSessionId);
     }
 }

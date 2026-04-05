@@ -1,9 +1,6 @@
 using CopilotVoice.Audio;
 using CopilotVoice.Bridge;
 using CopilotVoice.Config;
-using CopilotVoice.Input;
-using CopilotVoice.Messaging;
-using CopilotVoice.Sessions;
 using CopilotVoice.UI.Avatar;
 using CopilotVoice.Voice;
 
@@ -11,6 +8,7 @@ namespace CopilotVoice;
 
 /// <summary>
 /// Centralizes all backend services and exposes events for the Avalonia UI.
+/// New architecture: BridgeServer + VoiceLiveClient + PushToTalkController.
 /// </summary>
 public sealed class AppServices : IDisposable
 {
@@ -19,22 +17,12 @@ public sealed class AppServices : IDisposable
     public AvatarAnimator Animator { get; } = new();
 
     private readonly ConfigManager _configManager;
-    private readonly SessionDetector _sessionDetector;
-    private readonly SessionManager _sessionManager;
-    private PushToTalkRecognizer? _stt;
-    private TextToSpeechEngine? _tts;
-    private IInputSender? _inputSender;
-    private MessageListener? _messageListener;
     private Hotkey.HotkeyListener? _hotkey;
-    private Mcp.McpServer? _mcpServer;
-    private Mcp.McpSseTransport? _mcpSseTransport;
     private BridgeServer? _bridgeServer;
     private IVoiceLiveSession? _voiceLiveSession;
     private PushToTalkController? _pttController;
     private IMicCapture? _micCapture;
     private IAudioPlayer? _audioPlayer;
-    private bool _isRecording;
-    private bool _isBusy;
     private bool _disposed;
     private bool _hasMicrophone = true;
     private bool _isMuted;
@@ -43,10 +31,7 @@ public sealed class AppServices : IDisposable
     // UI events
     public event Action<string>? OnStateChanged;
     public event Action<string?, string?>? OnSpeechBubble;
-    public event Action<string?>? OnTranscriptionUpdate; // user's voice (partial STT)
-    public event Action<string?>? OnTargetSession;
-    public event Action<string?, TimeSpan>? OnTimerTick;
-    public event Action<List<CopilotSession>>? OnSessionsRefreshed;
+    public event Action<string?>? OnTranscriptionUpdate;
     public event Action<string>? OnLog;
     public event Action<bool>? OnMicAvailabilityChanged;
     public event Action<string>? OnVoiceChanged;
@@ -76,76 +61,11 @@ public sealed class AppServices : IDisposable
         }
         if (configChanged)
             _configManager.Save(Config);
-
-        _sessionDetector = new SessionDetector();
-        _sessionManager = new SessionManager(_sessionDetector);
     }
 
     public async Task StartAsync()
     {
         Log("Starting services...");
-
-        // Auth check
-        var auth = new AzureAuthProvider();
-        try
-        {
-            var (_, region) = auth.Resolve(Config);
-            Log($"Azure Speech: {region}");
-        }
-        catch (Exception ex)
-        {
-            Log($"Auth failed: {ex.Message}");
-            OnStateChanged?.Invoke("Error");
-            OnSpeechBubble?.Invoke($"Auth error: {ex.Message}", null);
-            return;
-        }
-
-        // Sessions
-        var sessions = _sessionDetector.DetectSessions();
-        Log($"Found {sessions.Count} session(s)");
-        OnSessionsRefreshed?.Invoke(sessions);
-
-        _sessionManager.OnTargetChanged += s =>
-        {
-            OnTargetSession?.Invoke(s?.Label);
-            Log($"Target: {s?.Label ?? "none"}");
-        };
-        _sessionManager.StartWatching();
-
-        // Input sender
-        try
-        {
-            _inputSender = InputSenderFactory.Create();
-            Log($"Input sender: {_inputSender.GetType().Name}");
-        }
-        catch (Exception ex)
-        {
-            Log($"Input sender: {ex.Message}");
-        }
-
-        // TTS
-        if (Config.EnableVoiceOutput)
-        {
-            try
-            {
-                _tts = new TextToSpeechEngine(Config);
-                _tts.OnSpeechStarted += () =>
-                {
-                    Animator.RecordInteraction();
-                    OnStateChanged?.Invoke("Speaking");
-                };
-                _tts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
-                _tts.OnError += err => Log($"TTS error: {err}");
-                Log($"TTS: {Config.VoiceName}");
-                _voiceName = Config.VoiceName;
-                _azureSpeechKey = Config.AzureSpeechKey;
-                _azureSpeechRegion = Config.AzureSpeechRegion;
-            }
-            catch (Exception ex)
-            {
-                Log($"TTS init failed: {ex.Message}");
-            }
-        }
 
         // Check microphone availability and start polling
         _hasMicrophone = CheckMicrophoneAvailable();
@@ -156,69 +76,11 @@ public sealed class AppServices : IDisposable
         }
         StartMicMonitor();
 
-        // STT
-        _stt = new PushToTalkRecognizer(Config);
-        _stt.OnPartialResult += text =>
-        {
-            Animator.RecordInteraction();
-            OnTranscriptionUpdate?.Invoke(text);
-        };
-        _stt.OnError += err => Log($"STT error: {err}");
-        _stt.OnLog += msg => Log(msg);
-
-        // Message listener
-        try
-        {
-            _messageListener = new MessageListener();
-            _messageListener.OnMessageReceived += async msg =>
-            {
-                try
-                {
-                    OnSpeechBubble?.Invoke(msg.Text, msg.SessionLabel);
-                    if (!_isMuted)
-                        await SayStaticAsync(msg.Text);
-                    else
-                        await Task.Delay(Math.Max(3000, msg.Text.Length * 50));
-                    OnSpeechBubble?.Invoke(null, null);
-                }
-                catch (Exception ex) { Log($"Message handler error: {ex.Message}"); }
-            };
-            _messageListener.OnSpeakReceived += async msg =>
-            {
-                OnSpeechBubble?.Invoke(msg.Text, null);
-                if (!_isMuted)
-                    await SayStaticAsync(msg.Text);
-                else
-                    await Task.Delay(Math.Max(3000, msg.Text.Length * 50));
-                OnSpeechBubble?.Invoke(null, null);
-            };
-            _messageListener.OnBubbleReceived += msg =>
-            {
-                OnSpeechBubble?.Invoke(msg.Text, null);
-            };
-            _messageListener.OnRegisterReceived += async reg =>
-            {
-                var session = _sessionManager.RegisterSession(reg);
-                Log($"Session registered: {session.Label} (PID {session.ProcessId})");
-                _sessionManager.LockToSession(session);
-                OnSessionsRefreshed?.Invoke(_sessionManager.GetAllSessions());
-                return session.Label;
-            };
-            _messageListener.Start();
-            Log("Message listener: localhost:7701");
-        }
-        catch (Exception ex)
-        {
-            Log($"Message listener: {ex.Message}");
-        }
-
         // Hotkey
         try
         {
             _hotkey = new Hotkey.HotkeyListener(Config.Hotkey);
             _hotkey.OnError += msg => Log($"Hotkey: {msg}");
-            _hotkey.OnPushToTalkStart += OnHotkeyDown;
-            _hotkey.OnPushToTalkStop += OnHotkeyUp;
             _hotkey.Start();
             Log($"Hotkey: {Config.Hotkey}");
         }
@@ -227,81 +89,15 @@ public sealed class AppServices : IDisposable
             Log($"Hotkey failed: {ex.Message}");
         }
 
-        // MCP TCP server — lets Copilot CLI connect via TCP on port 7702
-        try
-        {
-            _mcpServer = new Mcp.McpServer();
-            _mcpServer.OnLog += msg => Log(msg);
-            Mcp.McpToolHandler.OnSpeak = async (text, _voice) => await SayStaticAsync(text);
-            Mcp.McpToolHandler.OnListen = async (duration, _lang) =>
-            {
-                if (_stt == null) return "Listening not available";
-                var tcs = new TaskCompletionSource<string>();
-                void handler(string text) { tcs.TrySetResult(text); }
-                _stt.OnFinalResult += handler;
-                try
-                {
-                    OnStateChanged?.Invoke("Recording");
-                    await _stt.StartRecordingAsync();
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(duration));
-                    cts.Token.Register(() => tcs.TrySetResult(""));
-                    var result = await tcs.Task;
-                    await _stt.StopRecordingAndTranscribeAsync();
-                    OnStateChanged?.Invoke("Ready");
-                    return result;
-                }
-                finally { _stt.OnFinalResult -= handler; }
-            };
-            Mcp.McpToolHandler.OnNotify = async (message, speak) =>
-            {
-                OnSpeechBubble?.Invoke(message, null);
-                if (speak) await SayStaticAsync(message);
-            };
-            Mcp.McpToolHandler.OnSetAvatar = expr =>
-            {
-                OnStateChanged?.Invoke(expr);
-            };
-            Mcp.McpToolHandler.OnWindowControl = async (action, x, y, position) =>
-            {
-                if (OnWindowControl != null)
-                    return await OnWindowControl(action, x, y, position);
-                return "Window control not available";
-            };
-            Mcp.McpToolHandler.OnRegister = async (pid, workingDir, label) =>
-            {
-                var reg = new Messaging.RegisterRequest
-                {
-                    Pid = pid,
-                    WorkingDirectory = workingDir,
-                    Label = label,
-                };
-                var session = _sessionManager.RegisterSession(reg);
-                Log($"Session registered via MCP: {session.Label} (PID {session.ProcessId})");
-                _sessionManager.LockToSession(session);
-                OnSessionsRefreshed?.Invoke(_sessionManager.GetAllSessions());
-                return $"Registered: {session.Label} (PID {session.ProcessId})";
-            };
-            _mcpSseTransport = new Mcp.McpSseTransport(_mcpServer, 7702);
-            _mcpSseTransport.OnLog += msg => Log(msg);
-            _mcpSseTransport.Start();
-            Log("MCP SSE server: http://localhost:7702/sse");
-        }
-        catch (Exception ex)
-        {
-            Log($"MCP server: {ex.Message}");
-        }
-
         // Start avatar idle animation
         Animator.StartIdleLoop();
 
-        // --- Voice Live API + Push-to-Talk (new architecture) ---
+        // Voice Live API + Push-to-Talk pipeline
         await StartVoiceLivePipelineAsync();
 
         OnStateChanged?.Invoke("Ready");
         Log("Ready!");
     }
-
-    private readonly SemaphoreSlim _recordLock = new(1, 1);
 
     /// <summary>
     /// Initializes the Voice Live API pipeline when credentials are configured:
@@ -319,7 +115,7 @@ public sealed class AppServices : IDisposable
         catch (Exception ex)
         {
             Log($"Bridge server failed: {ex.Message}");
-            return; // Can't continue without the bridge
+            return;
         }
 
         // 2. Connect to Voice Live API (if credentials configured)
@@ -348,7 +144,6 @@ public sealed class AppServices : IDisposable
             catch (Exception ex)
             {
                 Log($"Voice Live API: {ex.Message}");
-                // Continue without voice — push-to-talk won't work but bridge still serves CLI
             }
         }
         else
@@ -407,203 +202,8 @@ public sealed class AppServices : IDisposable
     }
 
     // Public wrappers for UI push-to-talk button
-    public void OnMicButtonDown() => OnHotkeyDown();
-    public void OnMicButtonUp() => OnHotkeyUp();
-
-    private async void OnHotkeyDown()
-    {
-        if (_isRecording || _isBusy || _stt == null) return;
-
-        if (!_hasMicrophone)
-        {
-            OnSpeechBubble?.Invoke("No microphone available. Please connect a mic.", null);
-            return;
-        }
-
-        if (!_recordLock.Wait(0)) return; // non-blocking trylock
-        try
-        {
-            if (_isRecording) return; // double-check under lock
-            _isRecording = true;
-
-            // Stop any active TTS when user starts recording
-            _tts?.Stop();
-            try { if (_activeAudioProcess is { HasExited: false } p) p.Kill(); } catch { }
-
-            Log("Hotkey pressed — starting recording");
-            OnStateChanged?.Invoke("Recording");
-            Animator.RecordInteraction();
-
-            await _stt.StartRecordingAsync();
-        }
-        catch (Exception ex)
-        {
-            var friendly = ex.Message.Contains("0x15") || ex.Message.Contains("MIC_ERROR")
-                ? "No microphone available. Please connect a mic and try again."
-                : ex.Message.Contains("0x5") || ex.Message.Contains("PERMISSION")
-                ? "Microphone permission denied. Grant access in System Settings → Privacy → Microphone."
-                : $"Mic error: {ex.Message}";
-            Log($"Mic error: {ex.Message}");
-            OnStateChanged?.Invoke("Error");
-            OnSpeechBubble?.Invoke(friendly, null);
-            if (ex.Message.Contains("0x15") || ex.Message.Contains("MIC_ERROR"))
-            {
-                _hasMicrophone = false;
-                OnMicAvailabilityChanged?.Invoke(false);
-            }
-            _isRecording = false;
-        }
-        finally
-        {
-            _recordLock.Release();
-        }
-    }
-
-    private async void OnHotkeyUp()
-    {
-        if (!_isRecording || _stt == null) return;
-        _isRecording = false;
-        _isBusy = true;
-
-        Log("Hotkey released — stopping recording");
-        OnStateChanged?.Invoke("Transcribing");
-
-        try
-        {
-            var text = await _stt.StopRecordingAndTranscribeAsync();
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                Log("No speech detected");
-                OnStateChanged?.Invoke("Ready");
-                return;
-            }
-
-            Log($"Transcribed: {text}");
-
-            // Always copy to clipboard
-            try
-            {
-                await CopyToClipboardAsync(text);
-                Log("Copied to clipboard");
-            }
-            catch (Exception clipEx)
-            {
-                Log($"Clipboard failed: {clipEx.Message}");
-            }
-
-            // Try MCP sampling first (sends prompt directly via SSE, no paste/focus needed)
-            var delivered = false;
-            if (_mcpServer?.Clients.Count > 0)
-            {
-                try
-                {
-                    Log($"Sending via MCP sampling: \"{text}\"");
-                    var result = await _mcpServer.BroadcastSamplingAsync(text, TimeSpan.FromSeconds(120));
-                    if (result != null)
-                    {
-                        delivered = true;
-                        Log($"MCP sampling delivered, response: {result.Content?.Text?[..Math.Min(60, result.Content?.Text?.Length ?? 0)]}");
-                    }
-                    else
-                    {
-                        Log("MCP sampling returned null — falling back to paste");
-                    }
-                }
-                catch (Exception mcpEx)
-                {
-                    Log($"MCP sampling failed: {mcpEx.Message} — falling back to paste");
-                }
-            }
-
-            // Fallback: paste into console
-            if (!delivered)
-            {
-                var target = _sessionManager.GetTargetSession();
-                if (target != null && _inputSender != null)
-                {
-                    try
-                    {
-                        Log($"Pasting to {target.Label}: \"{text}\"");
-                        await _inputSender.SendTextAsync(target, text, Config.AutoPressEnter);
-                        Log($"Pasted to {target.Label} OK");
-                    }
-                    catch (Exception sendEx)
-                    {
-                        Log($"Send failed: {sendEx.Message} — text is in clipboard");
-                    }
-                }
-                else
-                {
-                    Log("No target session — text is in clipboard (Cmd+V to paste)");
-                }
-            }
-
-            OnStateChanged?.Invoke("Ready");
-            // Clear transcription after a short delay
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(TimeSpan.FromSeconds(3));
-                OnTranscriptionUpdate?.Invoke(null);
-            });
-        }
-        catch (Exception ex)
-        {
-            Log($"Error: {ex}");
-            OnStateChanged?.Invoke("Error");
-            OnSpeechBubble?.Invoke($"Error: {ex.Message}", null);
-        }
-        finally
-        {
-            _isBusy = false;
-        }
-    }
-
-    // Session management for tray menu
-    public bool IsSessionLocked => _sessionManager.IsLocked;
-
-    public void ToggleSessionLock()
-    {
-        _sessionManager.ToggleLock();
-        Log($"Session lock: {(IsSessionLocked ? "locked" : "auto")}");
-    }
-
-    public void SelectSession(CopilotSession session)
-    {
-        _sessionManager.SelectSession(session);
-        Log($"Selected session: {session.Label}");
-        ActivateSessionWindow(session);
-    }
-
-    private static void ActivateSessionWindow(CopilotSession session)
-    {
-        if (!OperatingSystem.IsMacOS() || string.IsNullOrEmpty(session.TerminalApp))
-            return;
-
-        try
-        {
-            using var proc = new System.Diagnostics.Process();
-            proc.StartInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "osascript",
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            proc.Start();
-            proc.StandardInput.Write($"tell application \"{session.TerminalApp}\" to activate");
-            proc.StandardInput.Close();
-            proc.WaitForExit(3000);
-        }
-        catch { /* best effort */ }
-    }
-
-    public void RefreshSessions()
-    {
-        _sessionDetector.DetectSessions();
-        var sessions = _sessionManager.GetAllSessions();
-        Log($"Refreshed: {sessions.Count} session(s)");
-        OnSessionsRefreshed?.Invoke(sessions);
-    }
+    public void OnMicButtonDown() => _pttController?.OnHotkeyPressed();
+    public void OnMicButtonUp() => _pttController?.OnHotkeyReleased();
 
     public void ChangeVoice(string voiceName)
     {
@@ -621,42 +221,8 @@ public sealed class AppServices : IDisposable
             return;
         }
 
-        // Update static voice name for SayStaticAsync
-        _voiceName = voiceName;
-
-        // Skip TTS engine recreation when voice output is disabled
-        if (!Config.EnableVoiceOutput)
-        {
-            Log($"Voice changed to: {voiceName} (TTS disabled, config saved only)");
-            OnVoiceChanged?.Invoke(voiceName);
-            return;
-        }
-
-        // Recreate TTS engine with new voice — create first, dispose old on success
-        try
-        {
-            var newTts = new TextToSpeechEngine(Config);
-            newTts.OnSpeechStarted += () =>
-            {
-                Animator.RecordInteraction();
-                OnStateChanged?.Invoke("Speaking");
-            };
-            newTts.OnSpeechFinished += () => OnStateChanged?.Invoke("Ready");
-            newTts.OnError += err => Log($"TTS error: {err}");
-
-            _tts?.Dispose();
-            _tts = newTts;
-
-            Log($"Voice changed to: {voiceName}");
-            OnVoiceChanged?.Invoke(voiceName);
-        }
-        catch (Exception ex)
-        {
-            Log($"Voice change error: {ex.Message} — keeping previous voice");
-            Config.VoiceName = previousVoice;
-            _voiceName = previousVoice;
-            try { _configManager.Save(Config); } catch { /* best effort revert */ }
-        }
+        Log($"Voice changed to: {voiceName}");
+        OnVoiceChanged?.Invoke(voiceName);
     }
 
     public bool IsMuted => _isMuted;
@@ -664,17 +230,14 @@ public sealed class AppServices : IDisposable
     public void ToggleMute()
     {
         _isMuted = !_isMuted;
-        _isMutedStatic = _isMuted;
         Log($"Mute: {(_isMuted ? "ON" : "OFF")}");
         if (_isMuted)
         {
-            _tts?.Stop();
-            try { if (_activeAudioProcess is { HasExited: false } p) p.Kill(); } catch { }
-            Animator.SetExpression(UI.Avatar.AvatarExpression.Muted);
+            Animator.SetExpression(AvatarExpression.Muted);
         }
         else
         {
-            Animator.SetExpression(UI.Avatar.AvatarExpression.Normal);
+            Animator.SetExpression(AvatarExpression.Normal);
         }
         OnMuteChanged?.Invoke(_isMuted);
     }
@@ -683,138 +246,6 @@ public sealed class AppServices : IDisposable
     {
         Console.Error.WriteLine($"[copilot-voice] {msg}");
         OnLog?.Invoke(msg);
-    }
-
-    private static string _voiceName = "en-US-AndrewMultilingualNeural";
-    private static string? _azureSpeechKey;
-    private static string? _azureSpeechRegion;
-    private static bool _isMutedStatic;
-    private static System.Diagnostics.Process? _activeAudioProcess;
-
-    public static async Task SayStaticAsync(string text)
-    {
-        if (_isMutedStatic) return;
-        Console.WriteLine($"[TTS] SayStaticAsync called: \"{text[..Math.Min(text.Length, 50)]}...\"");
-        var tmpFile = Path.Combine(Path.GetTempPath(), $"copilot-voice-tts-{Guid.NewGuid():N}.wav");
-        try
-        {
-            // Try Azure TTS first (cross-platform)
-            var key = _azureSpeechKey
-                ?? Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
-            var region = _azureSpeechRegion
-                ?? Environment.GetEnvironmentVariable("AZURE_SPEECH_REGION")
-                ?? "centralus";
-            Console.WriteLine($"[TTS] Azure key present: {!string.IsNullOrEmpty(key)}, region: {region}, voice: {_voiceName}");
-
-            if (!string.IsNullOrEmpty(key))
-            {
-                var speechConfig = Microsoft.CognitiveServices.Speech.SpeechConfig.FromSubscription(key, region);
-                speechConfig.SpeechSynthesisVoiceName = _voiceName;
-                using var audioConfig = Microsoft.CognitiveServices.Speech.Audio.AudioConfig.FromWavFileOutput(tmpFile);
-                using var synthesizer = new Microsoft.CognitiveServices.Speech.SpeechSynthesizer(speechConfig, audioConfig);
-                var result = await synthesizer.SpeakTextAsync(text);
-                if (result.Reason == Microsoft.CognitiveServices.Speech.ResultReason.SynthesizingAudioCompleted)
-                {
-                    Console.WriteLine($"[TTS] Azure synthesis OK, playing {tmpFile}");
-                    await PlayAudioFileAsync(tmpFile);
-                    return;
-                }
-                Console.Error.WriteLine($"[TTS] Azure failed: {result.Reason}");
-            }
-
-            // Fallback: macOS say command
-            if (OperatingSystem.IsMacOS())
-            {
-                var aiffFile = Path.ChangeExtension(tmpFile, ".aiff");
-                using var sayProcess = new System.Diagnostics.Process();
-                sayProcess.StartInfo = new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "say",
-                    Arguments = $"-o \"{aiffFile}\" \"{text.Replace("\"", "\\\"")}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                sayProcess.Start();
-                await sayProcess.WaitForExitAsync();
-                await PlayAudioFileAsync(aiffFile);
-                try { File.Delete(aiffFile); } catch { }
-            }
-        }
-        finally
-        {
-            try { File.Delete(tmpFile); } catch { }
-        }
-    }
-
-    private static async Task PlayAudioFileAsync(string filePath)
-    {
-        string player;
-        string args;
-
-        if (OperatingSystem.IsMacOS())
-        {
-            player = "afplay";
-            args = $"\"{filePath}\"";
-        }
-        else if (OperatingSystem.IsLinux())
-        {
-            player = "aplay";
-            args = $"\"{filePath}\"";
-        }
-        else if (OperatingSystem.IsWindows())
-        {
-            player = "powershell";
-            args = $"-c \"(New-Object Media.SoundPlayer '{filePath}').PlaySync()\"";
-        }
-        else return;
-
-        using var process = new System.Diagnostics.Process();
-        process.StartInfo = new System.Diagnostics.ProcessStartInfo
-        {
-            FileName = player,
-            Arguments = args,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-        process.Start();
-        _activeAudioProcess = process;
-        await process.WaitForExitAsync();
-        _activeAudioProcess = null;
-    }
-
-    private static async Task CopyToClipboardAsync(string text)
-    {
-        if (OperatingSystem.IsMacOS())
-        {
-            using var process = new System.Diagnostics.Process();
-            process.StartInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "pbcopy",
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            process.Start();
-            await process.StandardInput.WriteAsync(text);
-            process.StandardInput.Close();
-            await process.WaitForExitAsync();
-        }
-        else if (OperatingSystem.IsLinux())
-        {
-            using var process = new System.Diagnostics.Process();
-            process.StartInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "xclip",
-                Arguments = "-selection clipboard",
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
-            process.Start();
-            await process.StandardInput.WriteAsync(text);
-            process.StandardInput.Close();
-            await process.WaitForExitAsync();
-        }
     }
 
     public void Dispose()
@@ -827,14 +258,8 @@ public sealed class AppServices : IDisposable
         _audioPlayer?.Dispose();
         _voiceLiveSession?.DisposeAsync().AsTask().Wait(2000);
         _bridgeServer?.DisposeAsync().AsTask().Wait(2000);
-        _mcpSseTransport?.DisposeAsync().AsTask().Wait(2000);
         _hotkey?.Dispose();
         Animator.Dispose();
-        _stt?.Dispose();
-        _tts?.Dispose();
-        _sessionManager.Dispose();
-        _messageListener?.Dispose();
-        _mcpServer?.DisposeAsync().AsTask().Wait(2000);
     }
 
     private static bool CheckMicrophoneAvailable()
@@ -843,11 +268,9 @@ public sealed class AppServices : IDisposable
             return CheckMicrophoneMacOS();
         if (OperatingSystem.IsWindows())
             return CheckMicrophoneWindows();
-        // Linux: assume available (no reliable lightweight check)
         return true;
     }
 
-    // macOS: CoreAudio P/Invoke — checks if a default input device exists without opening it
     [System.Runtime.InteropServices.DllImport("/System/Library/Frameworks/CoreAudio.framework/CoreAudio")]
     private static extern int AudioObjectGetPropertyData(
         uint objectID, ref CoreAudioPropertyAddress address,
@@ -866,8 +289,8 @@ public sealed class AppServices : IDisposable
     {
         try
         {
-            const uint kAudioHardwarePropertyDefaultInputDevice = 0x64496E20; // 'dIn '
-            const uint kAudioObjectPropertyScopeGlobal = 0x676C6F62;          // 'glob'
+            const uint kAudioHardwarePropertyDefaultInputDevice = 0x64496E20;
+            const uint kAudioObjectPropertyScopeGlobal = 0x676C6F62;
             const uint kAudioObjectPropertyElementMain = 0;
             const uint kAudioObjectSystemObject = 1;
             const uint kAudioObjectUnknown = 0;
@@ -885,7 +308,6 @@ public sealed class AppServices : IDisposable
         catch { return false; }
     }
 
-    // Windows: lightweight check via winmm.dll
     [System.Runtime.InteropServices.DllImport("winmm.dll")]
     private static extern uint waveInGetNumDevs();
 
