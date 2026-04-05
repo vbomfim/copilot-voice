@@ -41,6 +41,12 @@ export const MAX_BACKOFF_MS = 30000;
 /** Maximum inbound payload size from companion app (100KB). */
 const MAX_INBOUND_BYTES = 100 * 1024;
 
+/** Maximum SSE buffer size before forced reconnect (256KB). */
+const MAX_SSE_BUFFER_BYTES = 256 * 1024;
+
+/** Maximum connection attempts before giving up (20 ≈ ~5 min). */
+export const MAX_CONNECT_ATTEMPTS = 20;
+
 /** HTTP request timeout in milliseconds (5 seconds). */
 const HTTP_TIMEOUT_MS = 5000;
 
@@ -194,6 +200,8 @@ export function parseSSELines(lines) {
     } else if (line.startsWith("data:")) {
       const dataValue = line.slice(5).trim();
       currentData += currentData ? "\n" + dataValue : dataValue;
+    } else if (line.startsWith("id:") || line.startsWith("retry:")) {
+      // SSE spec fields — acknowledged but not used
     }
   }
 
@@ -234,15 +242,18 @@ export function handleSSECommand(session, command) {
       return;
     }
 
+    const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+
     session.send({
       prompt: data.prompt,
-      attachments: data.attachments ?? [],
+      attachments,
     });
     return;
   }
 
-  // Unknown event type — log and ignore
-  session.log(`Received unknown SSE event: ${event}`, { level: "info" });
+  // Unknown event type — log and ignore (sanitize for log safety)
+  const safeEvent = String(event).replace(/[\x00-\x1f]/g, "").slice(0, 50);
+  session.log(`Received unknown SSE event: ${safeEvent}`, { level: "info" });
 }
 
 // ---------------------------------------------------------------------------
@@ -258,12 +269,15 @@ export function handleSSECommand(session, command) {
 export function createToolHandler(path) {
   return async (args) => {
     try {
-      await fetch(`${BASE_URL}${path}`, {
+      const response = await fetch(`${BASE_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(args),
         signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
       });
+      if (!response.ok) {
+        return `Voice companion returned error: HTTP ${response.status}`;
+      }
       return `Voice command sent successfully to ${path}`;
     } catch {
       return `Voice companion unavailable — could not reach ${BASE_URL}${path}`;
@@ -408,6 +422,16 @@ async function connectSSE(session) {
           const { done, value } = await reader.read();
 
           if (done) {
+            // Flush any remaining buffered data before reconnecting
+            if (buffer.trim()) {
+              const lines = buffer.split("\n");
+              lines.push(""); // add blank line to flush final event
+              const events = parseSSELines(lines);
+              for (const event of events) {
+                handleSSECommand(session, event);
+              }
+              buffer = "";
+            }
             session.log("SSE stream ended, reconnecting...", {
               level: "info",
             });
@@ -415,6 +439,16 @@ async function connectSSE(session) {
           }
 
           buffer += decoder.decode(value, { stream: true });
+
+          // Guard against unbounded buffer growth (256KB cap)
+          if (Buffer.byteLength(buffer, "utf8") > MAX_SSE_BUFFER_BYTES) {
+            session.log(
+              "SSE buffer exceeded 256KB limit, discarding and reconnecting",
+              { level: "warning" },
+            );
+            buffer = "";
+            break;
+          }
 
           // Process complete lines (SSE events are line-delimited)
           const lineEnd = buffer.lastIndexOf("\n");
@@ -459,7 +493,7 @@ async function connectSSE(session) {
 async function connectWithBackoff(session) {
   let attempt = 0;
 
-  while (true) {
+  while (attempt < MAX_CONNECT_ATTEMPTS) {
     try {
       const response = await fetch(`${BASE_URL}/health`, {
         signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
@@ -475,12 +509,17 @@ async function connectWithBackoff(session) {
 
     const backoffMs = calculateBackoff(attempt);
     session.log(
-      `Companion app unreachable, retrying in ${backoffMs / 1000}s...`,
+      `Companion app unreachable, retrying in ${backoffMs / 1000}s... (attempt ${attempt + 1}/${MAX_CONNECT_ATTEMPTS})`,
       { level: "warning" },
     );
     await delay(backoffMs);
     attempt++;
   }
+
+  session.log(
+    "Companion app unreachable after maximum retries. Voice features disabled. Restart the companion app and run /clear to retry.",
+    { level: "warning" },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -523,10 +562,16 @@ async function main() {
   }
 
   // Connect to companion app (backoff loop runs in background)
-  connectWithBackoff(session).then(() => {
-    // Once companion is reachable, start SSE listener
-    connectSSE(session);
-  });
+  connectWithBackoff(session)
+    .then(() => {
+      // Once companion is reachable, start SSE listener
+      connectSSE(session);
+    })
+    .catch((err) => {
+      session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
+        level: "error",
+      });
+    });
 }
 
 // Guard: skip main() during testing so we can import helpers
