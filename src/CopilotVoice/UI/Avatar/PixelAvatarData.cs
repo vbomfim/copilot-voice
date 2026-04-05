@@ -48,6 +48,10 @@ public static class PixelAvatarData
     private const string EyeTopCry    = "████     ▄  ▄     ████";
     private const string EyeBotCry    = "████     █· ·█    ████";
 
+    // Concerned: worried/angled eyebrows ╲ ╱ with wide eyes
+    private const string EyeTopConcern = "████    ╲▄  ▄╱    ████";
+    private const string EyeBotConcern = "████     █  █     ████";
+
     // Mouth row (row 7) varies per expression
     private const string MouthNormal   = "▀███▄            ▄███▀";
     private const string MouthOpen     = "▀███▄    ▄▄▄▄    ▄███▀";
@@ -56,6 +60,7 @@ public static class PixelAvatarData
     private const string MouthRelaxed  = "▀███▄     ──     ▄███▀";
     private const string MouthSad      = "▀███▄     ⌢⌢     ▄███▀";
     private const string MouthZipper   = "▀███▄     ✕✕     ▄███▀";
+    private const string MouthWorried  = "▀███▄     ∿∿     ▄███▀";
 
     public static string[] GetFrame(AvatarExpression expression) => expression switch
     {
@@ -100,6 +105,9 @@ public static class PixelAvatarData
 
         AvatarExpression.Muted => new[]
             { Row0, Row1, Row2, Row3, Row4, EyeTop, EyeBot, MouthZipper, Row8 },
+
+        AvatarExpression.Concerned => new[]
+            { Row0, Row1, Row2, Row3, Row4, EyeTopConcern, EyeBotConcern, MouthWorried, Row8 },
 
         _ => GetFrame(AvatarExpression.Normal),
     };

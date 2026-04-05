@@ -15,6 +15,7 @@ public sealed class AppServices : IDisposable
     public AppConfig Config { get; }
     public AvatarState AvatarState { get; } = new();
     public AvatarAnimator Animator { get; } = new();
+    public IAvatarStateManager AvatarStateManager { get; }
 
     private readonly ConfigManager _configManager;
     private Hotkey.HotkeyListener? _hotkey;
@@ -51,6 +52,15 @@ public sealed class AppServices : IDisposable
     {
         _configManager = new ConfigManager();
         Config = _configManager.LoadOrCreate();
+
+        // Initialize avatar state manager and wire to animator
+        var stateManager = new AvatarStateManager();
+        stateManager.ExpressionChanged += expression =>
+        {
+            Animator.RecordInteraction();
+            Animator.SetExpression(expression);
+        };
+        AvatarStateManager = stateManager;
 
         // Apply env var overrides and persist to config
         var envKey = Environment.GetEnvironmentVariable("AZURE_SPEECH_KEY");
@@ -148,6 +158,9 @@ public sealed class AppServices : IDisposable
                 var client = new VoiceLiveClient();
                 _voiceLiveSession = await client.ConnectAsync(voiceConfig);
                 Log($"Voice Live API: connected ({Config.VoiceLiveModel})");
+
+                // Wire disconnect/reconnect to avatar state manager
+                _voiceLiveSession.Disconnected += () => AvatarStateManager.SetDisconnected(true);
             }
             catch (Exception ex)
             {
@@ -191,6 +204,10 @@ public sealed class AppServices : IDisposable
                 Log($"TalkMode: {state}");
                 OnStateChanged?.Invoke($"TalkMode:{state}");
             };
+
+            // Wire avatar state manager to push-to-talk
+            AvatarStateManager.BindToPushToTalk(_pttController);
+            Log("AvatarStateManager → PushToTalkController wired");
 
             // 4. Wire hotkey with double-tap detection
             //    Single press = PTT, Double-tap = Talk Mode toggle
@@ -365,6 +382,7 @@ public sealed class AppServices : IDisposable
         _bridgeServer?.DisposeAsync().AsTask().Wait(2000);
         _hotkey?.Dispose();
         Animator.Dispose();
+        AvatarStateManager.Dispose();
     }
 
     private static bool CheckMicrophoneAvailable()

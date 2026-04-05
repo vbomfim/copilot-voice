@@ -77,6 +77,13 @@ public sealed class WaveformTheme : IAvatarTheme
             "  ▔ ▔ ▔ ▔ ▔  ",
             "        zzz  ",
         },
+        AvatarExpression.Concerned => new[]
+        {
+            "  ▅ ▁ ▇ ▁ ▃  ",
+            "  █ ▂ █ ▁ █  ",
+            "  ▔ ▔ ▔ ▔ ▔  ",
+            "     ⚠  !    ",
+        },
         _ => RenderFrame(AvatarExpression.Normal),
     };
 }
