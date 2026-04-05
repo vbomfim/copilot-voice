@@ -21,12 +21,20 @@ public sealed class AppServices : IDisposable
     private BridgeServer? _bridgeServer;
     private IVoiceLiveSession? _voiceLiveSession;
     private PushToTalkController? _pttController;
+    private TalkModeController? _talkModeController;
+    private TurnManager? _turnManager;
     private IMicCapture? _micCapture;
     private IAudioPlayer? _audioPlayer;
     private bool _disposed;
     private bool _hasMicrophone = true;
     private bool _isMuted;
     private CancellationTokenSource? _micMonitorCts;
+
+    /// <summary>Double-tap detection: timestamp of last hotkey press (ticks).</summary>
+    private long _lastHotkeyPressTicks;
+
+    /// <summary>Maximum interval between two presses to count as a double-tap (ms).</summary>
+    private const int DoubleTapWindowMs = 500;
 
     // UI events
     public event Action<string>? OnStateChanged;
@@ -151,7 +159,7 @@ public sealed class AppServices : IDisposable
             Log("Voice Live API: no endpoint configured (push-to-talk disabled)");
         }
 
-        // 3. Create PushToTalkController if voice session is available
+        // 3. Create PushToTalkController + TalkModeController if voice session is available
         if (_voiceLiveSession is not null)
         {
             _micCapture = new MicCapture();
@@ -169,12 +177,28 @@ public sealed class AppServices : IDisposable
                 OnStateChanged?.Invoke(state.ToString());
             };
 
-            // 4. Wire hotkey to push-to-talk controller
+            // Create TalkModeController with TurnManager
+            _turnManager = new TurnManager(_micCapture);
+            _talkModeController = new TalkModeController(
+                _voiceLiveSession,
+                _micCapture,
+                _audioPlayer,
+                _bridgeServer.SessionBridge,
+                _turnManager);
+
+            _talkModeController.StateChanged += state =>
+            {
+                Log($"TalkMode: {state}");
+                OnStateChanged?.Invoke($"TalkMode:{state}");
+            };
+
+            // 4. Wire hotkey with double-tap detection
+            //    Single press = PTT, Double-tap = Talk Mode toggle
             if (_hotkey is not null)
             {
-                _hotkey.OnPushToTalkStart += _pttController.OnHotkeyPressed;
-                _hotkey.OnPushToTalkStop += _pttController.OnHotkeyReleased;
-                Log("Hotkey → PushToTalkController wired");
+                _hotkey.OnPushToTalkStart += OnHotkeyPressedWithDoubleTap;
+                _hotkey.OnPushToTalkStop += OnHotkeyReleasedWithDoubleTap;
+                Log("Hotkey → PushToTalk + TalkMode (double-tap) wired");
             }
 
             // 5. Wire function call handler for Voice Live API
@@ -204,6 +228,85 @@ public sealed class AppServices : IDisposable
     // Public wrappers for UI push-to-talk button
     public void OnMicButtonDown() => _pttController?.OnHotkeyPressed();
     public void OnMicButtonUp() => _pttController?.OnHotkeyReleased();
+
+    /// <summary>Whether Talk Mode is currently active.</summary>
+    public bool IsTalkModeActive => _talkModeController?.IsActive ?? false;
+
+    /// <summary>
+    /// Hotkey press handler with double-tap detection.
+    /// Two presses within 500ms = double-tap → toggle Talk Mode.
+    /// Single press = PTT (if Talk Mode is not active).
+    /// </summary>
+    private void OnHotkeyPressedWithDoubleTap()
+    {
+        var now = Environment.TickCount64;
+        var elapsed = now - _lastHotkeyPressTicks;
+        _lastHotkeyPressTicks = now;
+
+        if (elapsed < DoubleTapWindowMs && elapsed > 0)
+        {
+            // Double-tap detected
+            _lastHotkeyPressTicks = 0; // reset to avoid triple-tap
+            HandleDoubleTap();
+        }
+        else if (_talkModeController?.IsActive != true)
+        {
+            // Single press — forward to PTT (only if Talk Mode is not active)
+            _pttController?.OnHotkeyPressed();
+        }
+    }
+
+    /// <summary>
+    /// Hotkey release handler. Only forwarded to PTT if Talk Mode is not active.
+    /// </summary>
+    private void OnHotkeyReleasedWithDoubleTap()
+    {
+        if (_talkModeController?.IsActive != true)
+        {
+            _pttController?.OnHotkeyReleased();
+        }
+    }
+
+    /// <summary>
+    /// Handle double-tap: toggle Talk Mode on/off.
+    /// When activating, cancel any in-progress PTT recording first.
+    /// </summary>
+    private void HandleDoubleTap()
+    {
+        if (_talkModeController is null) return;
+
+        if (_talkModeController.IsActive)
+        {
+            Log("Double-tap: deactivating Talk Mode");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _talkModeController.DeactivateAsync();
+                    OnStateChanged?.Invoke("Ready");
+                }
+                catch (Exception ex) { Log($"Talk Mode deactivation error: {ex.Message}"); }
+            });
+        }
+        else
+        {
+            // Cancel any PTT recording that started on the first press
+            if (_pttController?.State == PushToTalkState.Recording)
+            {
+                _pttController.OnHotkeyReleased(); // quick-release cancels PTT
+            }
+
+            Log("Double-tap: activating Talk Mode");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _talkModeController.ActivateAsync();
+                }
+                catch (Exception ex) { Log($"Talk Mode activation error: {ex.Message}"); }
+            });
+        }
+    }
 
     public void ChangeVoice(string voiceName)
     {
@@ -253,6 +356,8 @@ public sealed class AppServices : IDisposable
         if (_disposed) return;
         _disposed = true;
         _micMonitorCts?.Cancel();
+        _talkModeController?.DeactivateAsync().Wait(2000);
+        _talkModeController?.Dispose();
         _pttController?.StopAsync().Wait(2000);
         _micCapture?.Dispose();
         _audioPlayer?.Dispose();

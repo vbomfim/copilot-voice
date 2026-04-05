@@ -480,6 +480,7 @@ internal sealed class FakeVoiceLiveSession : IVoiceLiveSession
     public void SimulateResponseDone() => ResponseDone?.Invoke();
     public void SimulateError(string message) => ErrorReceived?.Invoke(message);
     public void SimulateFunctionCall(FunctionCall call) => FunctionCallReceived?.Invoke(call);
+    public void SimulateDisconnected() => Disconnected?.Invoke();
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -518,11 +519,13 @@ internal sealed class FakeAudioPlayer : IAudioPlayer
     public bool PlayWasCalled { get; private set; }
     public bool StopWasCalled { get; private set; }
     public byte[]? LastPlayedAudio { get; private set; }
+    public bool ThrowOnPlay { get; set; }
 
     public event Action? PlaybackCompleted;
 
     public Task PlayAsync(ReadOnlyMemory<byte> pcm16Audio, CancellationToken ct = default)
     {
+        if (ThrowOnPlay) throw new InvalidOperationException("Playback device error");
         PlayWasCalled = true;
         LastPlayedAudio = pcm16Audio.ToArray();
         IsPlaying = true;
