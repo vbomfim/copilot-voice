@@ -31,6 +31,9 @@ public sealed class BridgeServer : IAsyncDisposable
     /// <summary>Maximum allowed request body size in bytes (100KB).</summary>
     private const int MaxBodySize = 100 * 1024;
 
+    /// <summary>Maximum concurrent SSE sessions.</summary>
+    internal const int MaxSessions = 10;
+
     /// <summary>Fired when a speak request is received (text to be spoken).</summary>
     public event Action<string>? SpeakRequested;
 
@@ -47,6 +50,7 @@ public sealed class BridgeServer : IAsyncDisposable
     {
         var builder = WebApplication.CreateSlimBuilder();
         builder.WebHost.UseUrls($"http://127.0.0.1:{_port}");
+        builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = MaxBodySize);
 
         // Suppress noisy request logging in tests
         builder.Logging.SetMinimumLevel(LogLevel.Warning);
@@ -194,11 +198,18 @@ public sealed class BridgeServer : IAsyncDisposable
         }
         finally
         {
-            // Schedule session removal after 30s timeout
+            // Schedule session removal after 30s timeout (allow reconnection)
             _ = Task.Run(async () =>
             {
-                await Task.Delay(TimeSpan.FromSeconds(30));
-                _sessionBridge.RemoveSession(sessionId);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30));
+                    _sessionBridge.RemoveSession(sessionId);
+                }
+                catch (Exception)
+                {
+                    // Cleanup is best-effort — don't propagate
+                }
             });
         }
     }

@@ -62,6 +62,11 @@ public sealed class SessionBridge : ISessionBridge
         }
     }
 
-    private SessionState GetOrCreateSession(string sessionId) =>
-        _sessions.GetOrAdd(sessionId, _ => new SessionState());
+    private SessionState GetOrCreateSession(string sessionId)
+    {
+        if (_sessions.Count >= BridgeServer.MaxSessions && !_sessions.ContainsKey(sessionId))
+            throw new InvalidOperationException($"Maximum session limit ({BridgeServer.MaxSessions}) reached");
+
+        return _sessions.GetOrAdd(sessionId, _ => new SessionState());
+    }
 }
