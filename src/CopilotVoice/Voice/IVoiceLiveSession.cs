@@ -31,6 +31,9 @@ public interface IVoiceLiveSession : IAsyncDisposable
     /// <summary>Fired when the model requests a function call.</summary>
     event Action<FunctionCall>? FunctionCallReceived;
 
+    /// <summary>Fired when the model's response is fully complete (all audio/text/function calls delivered).</summary>
+    event Action? ResponseDone;
+
     /// <summary>Fired on API error.</summary>
     event Action<string>? ErrorReceived;
 

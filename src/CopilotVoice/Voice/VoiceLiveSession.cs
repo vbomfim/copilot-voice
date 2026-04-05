@@ -27,6 +27,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
     public event Action<FunctionCall>? FunctionCallReceived;
     public event Action<string>? ErrorReceived;
     public event Action? SessionReady;
+    public event Action? ResponseDone;
     public event Action? Disconnected;
 
     /// <summary>Exposed for testing — allows tests to observe reconnection timing.</summary>
@@ -288,7 +289,11 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                     }
                     break;
 
-                // Silently ignore other event types (response.done, input_audio_buffer.speech_started, etc.)
+                case "response.done":
+                    ResponseDone?.Invoke();
+                    break;
+
+                // Silently ignore other event types (input_audio_buffer.speech_started, etc.)
             }
         }
         catch (JsonException)
