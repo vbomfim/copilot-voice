@@ -17,7 +17,8 @@ public enum AvatarExpression
     Relaxed,
     Sleeping,
     Smile,
-    Cry
+    Cry,
+    Muted
 }
 
 /// <summary>

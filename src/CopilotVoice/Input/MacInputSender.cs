@@ -32,7 +32,7 @@ public class MacInputSender : IInputSender
 
         Console.Error.WriteLine($"[MacInputSender] Pasting {text.Length} chars to {session.TerminalApp}: \"{text[..Math.Min(80, text.Length)]}\"");
 
-        // Set clipboard via pbcopy
+        // Set clipboard via pbcopy (no trailing newline — bracketed paste treats it as literal)
         using (var proc = new Process())
         {
             proc.StartInfo = new ProcessStartInfo
@@ -48,7 +48,7 @@ public class MacInputSender : IInputSender
             await proc.WaitForExitAsync();
         }
 
-        // Activate the target app via osascript
+        // Activate the target app
         await ActivateAppAsync(session.TerminalApp ?? "Terminal");
         await Task.Delay(300);
 
@@ -60,7 +60,7 @@ public class MacInputSender : IInputSender
             // Scale delay with text length — longer text needs more time to paste
             var pasteDelay = Math.Max(500, Math.Min(2000, text.Length * 5));
             await Task.Delay(pasteDelay);
-            SendKey(kVK_Return);
+            SendKeyWithDelay(kVK_Return);
         }
     }
 
@@ -85,6 +85,17 @@ public class MacInputSender : IInputSender
         var down = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, true);
         var up = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, false);
         CGEventPost(0, down);
+        CGEventPost(0, up);
+        CFRelease(down);
+        CFRelease(up);
+    }
+
+    private static void SendKeyWithDelay(ushort keycode)
+    {
+        var down = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, true);
+        var up = CGEventCreateKeyboardEvent(IntPtr.Zero, keycode, false);
+        CGEventPost(0, down);
+        Thread.Sleep(50); // realistic key press duration
         CGEventPost(0, up);
         CFRelease(down);
         CFRelease(up);

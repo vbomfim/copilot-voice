@@ -58,18 +58,79 @@ public class SessionManager : IDisposable
             ? request.WorkingDirectory
             : Environment.CurrentDirectory;
 
+        var terminalApp = !string.IsNullOrEmpty(request.TerminalApp)
+            ? request.TerminalApp
+            : DetectTerminalApp(request.Pid);
+
         var session = new CopilotSession
         {
             Id = $"registered-{request.Pid}",
             ProcessId = request.Pid,
             WorkingDirectory = cwd,
-            TerminalApp = !string.IsNullOrEmpty(request.TerminalApp) ? request.TerminalApp : "Terminal",
+            TerminalApp = terminalApp,
             TerminalTitle = !string.IsNullOrEmpty(request.Label) ? request.Label : $"Copilot CLI (PID {request.Pid})",
             IsRegistered = true
         };
 
         _registeredSessions.Add(session);
         return session;
+    }
+
+    /// <summary>
+    /// Walk up the process tree from a PID to find the terminal application.
+    /// </summary>
+    private static string DetectTerminalApp(int pid)
+    {
+        var knownTerminals = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ghostty"] = "Ghostty",
+            ["iterm2"] = "iTerm2",
+            ["warp"] = "Warp",
+            ["terminal"] = "Terminal",
+            ["alacritty"] = "Alacritty",
+            ["kitty"] = "kitty",
+            ["hyper"] = "Hyper",
+            ["tabby"] = "Tabby",
+        };
+
+        try
+        {
+            var current = pid;
+            for (var i = 0; i < 10; i++)
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo("ps", $"-o ppid=,comm= -p {current}")
+                {
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                using var proc = System.Diagnostics.Process.Start(psi);
+                var output = proc?.StandardOutput.ReadToEnd().Trim() ?? "";
+                proc?.WaitForExit();
+
+                if (string.IsNullOrEmpty(output)) break;
+
+                var parts = output.Split((char[])null!, 2, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < 2) break;
+
+                if (!int.TryParse(parts[0], out var ppid) || ppid <= 1) break;
+
+                var comm = Path.GetFileNameWithoutExtension(parts[1].Trim());
+                foreach (var (key, appName) in knownTerminals)
+                {
+                    if (comm.Contains(key, StringComparison.OrdinalIgnoreCase))
+                        return appName;
+                }
+
+                current = ppid;
+            }
+        }
+        catch
+        {
+            // Best effort — fall back to Terminal
+        }
+
+        return "Terminal";
     }
 
     /// <summary>

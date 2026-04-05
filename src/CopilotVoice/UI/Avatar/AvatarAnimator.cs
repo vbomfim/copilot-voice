@@ -12,9 +12,13 @@ public sealed class AvatarAnimator : IDisposable
 
     private CancellationTokenSource? _idleCts;
     private DateTime _lastInteraction = DateTime.UtcNow;
+    private bool _isMuted;
 
     /// <summary>Raised whenever the animator wants to change the displayed expression.</summary>
     public event Action<AvatarExpression>? OnExpressionChanged;
+
+    /// <summary>Default expression to return to (Normal or Muted).</summary>
+    private AvatarExpression DefaultExpression => _isMuted ? AvatarExpression.Muted : AvatarExpression.Normal;
 
     /// <summary>Start the idle animation loop (blink every ~8 s, yawn after ~20 s idle).</summary>
     public void StartIdleLoop()
@@ -35,6 +39,13 @@ public sealed class AvatarAnimator : IDisposable
     /// <summary>Record user/system activity to reset the yawn timer.</summary>
     public void RecordInteraction() => _lastInteraction = DateTime.UtcNow;
 
+    /// <summary>Set expression directly (e.g. for mute state).</summary>
+    public void SetExpression(AvatarExpression expression)
+    {
+        _isMuted = expression == AvatarExpression.Muted;
+        OnExpressionChanged?.Invoke(expression);
+    }
+
     /// <summary>Play a blink animation: HalfBlink → Blink → HalfBlink → Normal.</summary>
     public async Task BlinkAsync(CancellationToken ct = default)
     {
@@ -44,7 +55,7 @@ public sealed class AvatarAnimator : IDisposable
         await Task.Delay(BlinkDuration, ct);
         OnExpressionChanged?.Invoke(AvatarExpression.HalfBlink);
         await Task.Delay(BlinkDuration / 2, ct);
-        OnExpressionChanged?.Invoke(AvatarExpression.Normal);
+        OnExpressionChanged?.Invoke(DefaultExpression);
     }
 
     /// <summary>Play a yawn animation: Yawn → YawnWide → Yawn → Normal.</summary>
@@ -56,7 +67,7 @@ public sealed class AvatarAnimator : IDisposable
         await Task.Delay(YawnDuration / 3, ct);
         OnExpressionChanged?.Invoke(AvatarExpression.Yawn);
         await Task.Delay(YawnDuration / 3, ct);
-        OnExpressionChanged?.Invoke(AvatarExpression.Normal);
+        OnExpressionChanged?.Invoke(DefaultExpression);
     }
 
     /// <summary>Animate the speaking expression for a given duration.</summary>
@@ -66,11 +77,11 @@ public sealed class AvatarAnimator : IDisposable
         var toggle = false;
         while (DateTime.UtcNow < end && !ct.IsCancellationRequested)
         {
-            OnExpressionChanged?.Invoke(toggle ? AvatarExpression.Speaking : AvatarExpression.Normal);
+            OnExpressionChanged?.Invoke(toggle ? AvatarExpression.Speaking : DefaultExpression);
             toggle = !toggle;
             await Task.Delay(TimeSpan.FromMilliseconds(250), ct);
         }
-        OnExpressionChanged?.Invoke(AvatarExpression.Normal);
+        OnExpressionChanged?.Invoke(DefaultExpression);
     }
 
     public void Dispose() => StopIdleLoop();

@@ -19,7 +19,7 @@
             <!-- Header (replaces title bar) -->
             <Border Grid.Row="0" Padding="12,8" Background="#2D2D44"
                     CornerRadius="12,12,0,0">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                         <TextBlock Text="🤖" FontSize="16" VerticalAlignment="Center"/>
                         <TextBlock Text="Copilot Voice" FontSize="13" FontWeight="Bold"
@@ -27,15 +27,22 @@
                         <TextBlock x:Name="StatusBadge" Text="● Starting..." FontSize="11"
                                    Foreground="#F9E2AF" VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </StackPanel>
+                    <!-- Mute toggle -->
+                    <Button x:Name="MuteButton" Grid.Column="1" Content="🔊"
+                            FontSize="12" Padding="4,2" Margin="4,0"
+                            Background="Transparent" Foreground="#A6ADC8"
+                            BorderThickness="0" VerticalAlignment="Center"
+                            ToolTip.Tip="Mute/unmute voice output"
+                            Click="OnMuteClicked"/>
                     <!-- Pin (topmost) toggle -->
-                    <Button x:Name="PinButton" Grid.Column="1" Content="📌"
+                    <Button x:Name="PinButton" Grid.Column="2" Content="📌"
                             FontSize="12" Padding="4,2" Margin="4,0"
                             Background="Transparent" Foreground="#A6ADC8"
                             BorderThickness="0" VerticalAlignment="Center"
                             ToolTip.Tip="Toggle always on top"
                             Click="OnPinClicked"/>
                     <!-- Hide button -->
-                    <Button x:Name="HideButton" Grid.Column="2" Content="—"
+                    <Button x:Name="HideButton" Grid.Column="3" Content="—"
                             FontSize="12" Padding="4,2"
                             Background="Transparent" Foreground="#A6ADC8"
                             BorderThickness="0" VerticalAlignment="Center"
