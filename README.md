@@ -180,6 +180,61 @@ All endpoints are on `http://localhost:7701` (used by Skills approach and direct
 
 The MCP server runs on `http://localhost:7702/sse` (SSE transport). Connect any MCP-compatible client to this URL.
 
+## CLI Extension (v2)
+
+> **Part of the v2 rearchitecture** — this is the programmatic bridge between the companion app and Copilot CLI, replacing clipboard/terminal-scraping with event-driven communication.
+
+The CLI extension (`.github/extensions/copilot-voice/extension.mjs`) runs inside the Copilot CLI process and provides:
+
+- **Event forwarding** — Agent responses and session events (idle, tool start/complete) are forwarded to the companion app via HTTP POST in real-time
+- **Command injection** — Voice commands received from the companion app via SSE are injected into the CLI session
+- **Native tools** — Registers `voice_speak` and `voice_set_avatar` tools that the agent can call directly
+- **Graceful degradation** — CLI works normally if the companion app is not running; reconnects automatically
+
+### How It Works (v2 Architecture)
+
+```
+┌─────────────────────┐     HTTP POST      ┌──────────────────────┐
+│                     │ ──────────────────► │                      │
+│   Copilot CLI       │  agent responses    │   Companion App      │
+│   + extension.mjs   │  session events     │   (localhost:7701)   │
+│                     │ ◄────────────────── │                      │
+│                     │    SSE commands      │                      │
+└─────────────────────┘   (voice prompts)   └──────────────────────┘
+```
+
+### Installing the Extension
+
+The extension is a single `.mjs` file with zero dependencies. Choose one:
+
+**Per-project** (version-controlled, loaded when CLI runs in this repo):
+```
+.github/extensions/copilot-voice/extension.mjs   ← already in this repo
+```
+
+**User-level** (always available, all repos):
+```bash
+# Copy the extension to your user-level extensions directory
+mkdir -p ~/.copilot/extensions/copilot-voice
+cp .github/extensions/copilot-voice/extension.mjs ~/.copilot/extensions/copilot-voice/
+```
+
+The CLI auto-discovers extensions on startup. Run `/clear` in the CLI to reload after installing.
+
+### Registered Tools
+
+| Tool | Description |
+|------|-------------|
+| `voice_speak` | Speak text aloud through the companion app's TTS |
+| `voice_set_avatar` | Change the avatar expression (normal, thinking, speaking, etc.) |
+
+### Extension Tests
+
+```bash
+# Run unit tests (47 tests, Node.js built-in test runner)
+node --test tests/extension/extension.test.mjs
+```
+
 ## Requirements
 
 - Azure Speech Services resource (F0 free tier: 5h STT + 500K chars TTS/month)
