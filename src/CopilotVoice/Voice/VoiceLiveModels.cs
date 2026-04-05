@@ -33,8 +33,9 @@ public record ToolDefinition(
 /// Minimal bridge interface to the Copilot CLI session.
 /// Implemented by the CLI Integration Bridge (#61). Nullable dependency — handlers
 /// work standalone with stub responses when no bridge is wired.
+/// Named ICliBridgeClient (not ISessionBridge) to avoid collision with Bridge.ISessionBridge.
 /// </summary>
-public interface ISessionBridge
+public interface ICliBridgeClient
 {
     /// <summary>Queue a command/prompt to the active Copilot CLI session.</summary>
     Task SendCommandAsync(string prompt, CancellationToken ct = default);
@@ -44,7 +45,7 @@ public interface ISessionBridge
 }
 
 /// <summary>
-/// Snapshot of the CLI session state returned by ISessionBridge.
+/// Snapshot of the CLI session state returned by ICliBridgeClient.
 /// </summary>
 public record SessionBridgeState(
     string Status,

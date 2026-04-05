@@ -8,12 +8,12 @@ namespace CopilotVoice.Voice;
 /// </summary>
 public class FunctionCallHandler
 {
-    private readonly ISessionBridge? _sessionBridge;
+    private readonly ICliBridgeClient? _sessionBridge;
     private readonly string _workspaceRoot;
 
     private const int MaxFileContentBytes = 4096;
 
-    public FunctionCallHandler(string? workspaceRoot = null, ISessionBridge? sessionBridge = null)
+    public FunctionCallHandler(string? workspaceRoot = null, ICliBridgeClient? sessionBridge = null)
     {
         _workspaceRoot = workspaceRoot ?? Environment.CurrentDirectory;
         _sessionBridge = sessionBridge;
@@ -31,7 +31,7 @@ public class FunctionCallHandler
         {
             "send_to_cli" => await HandleSendToCliAsync(call, ct).ConfigureAwait(false),
             "get_session_context" => HandleGetSessionContext(),
-            "get_file_content" => HandleGetFileContent(call),
+            "get_file_content" => await HandleGetFileContent(call),
             "set_avatar" => HandleSetAvatar(call),
             _ => JsonSerializer.Serialize(new { error = $"Unknown function: {call.Name}" })
         };
@@ -83,7 +83,7 @@ public class FunctionCallHandler
         });
     }
 
-    internal string HandleGetFileContent(FunctionCall call)
+    internal async Task<string> HandleGetFileContent(FunctionCall call)
     {
         var args = ParseArguments(call.Arguments);
         var path = args.GetValueOrDefault("path") ?? "";
@@ -108,7 +108,7 @@ public class FunctionCallHandler
 
         try
         {
-            var content = File.ReadAllText(fullPath);
+            var content = await File.ReadAllTextAsync(fullPath);
             var truncated = false;
 
             if (content.Length > MaxFileContentBytes)

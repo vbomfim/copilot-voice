@@ -43,6 +43,7 @@ internal sealed class WebSocketConnection : IRealtimeConnection
         if (_ws is null)
             yield break;
 
+        const int maxMessageSize = 1024 * 1024; // 1 MB cap
         var buffer = new byte[ReceiveBufferSize];
         var messageBuffer = new StringBuilder();
 
@@ -64,6 +65,12 @@ internal sealed class WebSocketConnection : IRealtimeConnection
 
             if (result.MessageType == WebSocketMessageType.Close)
                 yield break;
+
+            if (messageBuffer.Length + result.Count > maxMessageSize)
+            {
+                messageBuffer.Clear();
+                continue;
+            }
 
             messageBuffer.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
 

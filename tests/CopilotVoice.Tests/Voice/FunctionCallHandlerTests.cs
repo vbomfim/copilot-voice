@@ -291,7 +291,7 @@ public class FunctionCallHandlerTests : IDisposable
 
 // --- Test doubles ---
 
-internal class FakeSessionBridge : ISessionBridge
+internal class FakeSessionBridge : ICliBridgeClient
 {
     public string? LastCommand { get; private set; }
     public SessionBridgeState State { get; set; } = new("idle", null, "/test");

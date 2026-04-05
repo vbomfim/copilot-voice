@@ -55,6 +55,7 @@ public class AppConfig
 
     // Voice Live API
     public string? VoiceLiveEndpoint { get; set; }
+    [System.Text.Json.Serialization.JsonIgnore]
     public string? VoiceLiveKey { get; set; }
     public string VoiceLiveModel { get; set; } = "gpt-4o-realtime-preview";
     public string VoiceLiveVoice { get; set; } = "alloy";
