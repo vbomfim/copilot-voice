@@ -124,6 +124,7 @@ public sealed class AudioPlayer : IAudioPlayer
         if (!_isPlaying) return Task.CompletedTask;
 
         PortAudioSharp.Stream? streamToCleanup;
+        bool paWasInitialized = false;
 
         lock (_lock)
         {
@@ -133,14 +134,18 @@ public sealed class AudioPlayer : IAudioPlayer
             _isPlaying = false;
             _audioData = null;
 
-            // Capture stream ref and null it before cleanup
-            // to avoid re-entrance from PortAudio callbacks.
             streamToCleanup = _stream;
             _stream = null;
 
-            // Complete the awaiter without firing PlaybackCompleted
             _playbackTcs?.TrySetResult();
             _playbackTcs = null;
+
+            // Release PA ref inside lock to prevent double-release race with SignalNaturalCompletion
+            if (_paInitialized)
+            {
+                _paInitialized = false;
+                paWasInitialized = true;
+            }
         }
 
         // Cleanup stream OUTSIDE the lock to avoid deadlock with PortAudio callbacks.
@@ -150,11 +155,8 @@ public sealed class AudioPlayer : IAudioPlayer
             try { streamToCleanup.Dispose(); } catch { /* best effort */ }
         }
 
-        if (_paInitialized)
-        {
+        if (paWasInitialized)
             PortAudioLifecycle.Release();
-            _paInitialized = false;
-        }
 
         Console.Error.WriteLine("[AudioPlayer] Stopped (interrupted)");
 
@@ -174,16 +176,16 @@ public sealed class AudioPlayer : IAudioPlayer
         StreamCallbackFlags statusFlags,
         IntPtr userData)
     {
-        if (output == IntPtr.Zero || _audioData is null || _stopRequested)
+        var data = _audioData; // capture local to avoid TOCTOU race
+        if (output == IntPtr.Zero || data is null || _stopRequested)
         {
-            // Fill with silence before aborting
             if (output != IntPtr.Zero)
                 ClearBuffer(output, (int)(frameCount * ChannelCount * BytesPerSample));
             return StreamCallbackResult.Abort;
         }
 
         int byteCount = (int)(frameCount * ChannelCount * BytesPerSample);
-        int remaining = _audioData.Length - _playbackPosition;
+        int remaining = data.Length - _playbackPosition;
 
         if (remaining <= 0)
         {
@@ -193,17 +195,15 @@ public sealed class AudioPlayer : IAudioPlayer
         }
 
         int toCopy = Math.Min(byteCount, remaining);
-        Marshal.Copy(_audioData, _playbackPosition, output, toCopy);
+        Marshal.Copy(data, _playbackPosition, output, toCopy);
         _playbackPosition += toCopy;
 
-        // Fill leftover space with silence (partial final buffer)
         if (toCopy < byteCount)
         {
             ClearBuffer(output + toCopy, byteCount - toCopy);
         }
 
-        // Signal completion when all data has been fed to PortAudio
-        if (_playbackPosition >= _audioData.Length)
+        if (_playbackPosition >= data.Length)
         {
             SignalNaturalCompletion();
             return StreamCallbackResult.Complete;
@@ -223,6 +223,7 @@ public sealed class AudioPlayer : IAudioPlayer
         ThreadPool.QueueUserWorkItem(_ =>
         {
             PortAudioSharp.Stream? streamToCleanup;
+            bool paWasInit = false;
 
             lock (_lock)
             {
@@ -237,6 +238,12 @@ public sealed class AudioPlayer : IAudioPlayer
 
                 _playbackTcs?.TrySetResult();
                 _playbackTcs = null;
+
+                if (_paInitialized)
+                {
+                    _paInitialized = false;
+                    paWasInit = true;
+                }
             }
 
             // Cleanup outside lock
@@ -245,11 +252,8 @@ public sealed class AudioPlayer : IAudioPlayer
                 try { streamToCleanup.Dispose(); } catch { /* best effort */ }
             }
 
-            if (_paInitialized)
-            {
+            if (paWasInit)
                 PortAudioLifecycle.Release();
-                _paInitialized = false;
-            }
 
             PlaybackCompleted?.Invoke();
         });
@@ -264,18 +268,26 @@ public sealed class AudioPlayer : IAudioPlayer
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _stopRequested = true;
-        _isPlaying = false;
-
         PortAudioSharp.Stream? streamToCleanup;
+        bool paWasInit = false;
+
         lock (_lock)
         {
+            if (_disposed) return;
+            _disposed = true;
+            _stopRequested = true;
+            _isPlaying = false;
+
             streamToCleanup = _stream;
             _stream = null;
             _audioData = null;
             _playbackTcs?.TrySetResult();
+
+            if (_paInitialized)
+            {
+                _paInitialized = false;
+                paWasInit = true;
+            }
         }
 
         if (streamToCleanup is not null)
@@ -284,10 +296,7 @@ public sealed class AudioPlayer : IAudioPlayer
             try { streamToCleanup.Dispose(); } catch { /* best effort */ }
         }
 
-        if (_paInitialized)
-        {
+        if (paWasInit)
             PortAudioLifecycle.Release();
-            _paInitialized = false;
-        }
     }
 }

@@ -82,6 +82,10 @@ public sealed class MicCapture : IMicCapture
             _stream.Start();
             _isCapturing = true;
 
+            // Register cancellation to stop capture
+            if (ct.CanBeCanceled)
+                ct.Register(() => _ = StopAsync());
+
             Console.Error.WriteLine(
                 $"[MicCapture] Started — device: {deviceInfo.name}, rate: {SampleRate} Hz");
         }
@@ -151,9 +155,12 @@ public sealed class MicCapture : IMicCapture
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-        _isCapturing = false;
-        CleanupStream();
+        lock (_lock)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _isCapturing = false;
+            CleanupStream();
+        }
     }
 }
