@@ -11,6 +11,7 @@ internal sealed class WebSocketConnection : IRealtimeConnection
 {
     private ClientWebSocket? _ws;
     private const int ReceiveBufferSize = 16 * 1024; // 16 KB
+    private readonly SemaphoreSlim _sendLock = new(1, 1);
 
     public bool IsConnected => _ws?.State == WebSocketState.Open;
 
@@ -29,12 +30,20 @@ internal sealed class WebSocketConnection : IRealtimeConnection
         if (_ws is null || _ws.State != WebSocketState.Open)
             throw new InvalidOperationException("WebSocket is not connected.");
 
-        var bytes = Encoding.UTF8.GetBytes(eventJson);
-        await _ws.SendAsync(
-            bytes.AsMemory(),
-            WebSocketMessageType.Text,
-            endOfMessage: true,
-            ct).ConfigureAwait(false);
+        await _sendLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(eventJson);
+            await _ws.SendAsync(
+                bytes.AsMemory(),
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            _sendLock.Release();
+        }
     }
 
     public async IAsyncEnumerable<string> ReceiveEventsAsync(

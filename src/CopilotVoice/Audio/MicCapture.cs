@@ -11,17 +11,17 @@ namespace CopilotVoice.Audio;
 /// </summary>
 public sealed class MicCapture : IMicCapture
 {
-    /// <summary>Sample rate required by Azure Voice Live API.</summary>
-    private const int SampleRate = 16000;
+    /// <summary>Sample rate required by Azure Voice Live API (24 kHz for pcm16).</summary>
+    private const int SampleRate = 24000;
 
     /// <summary>Mono channel.</summary>
     private const int ChannelCount = 1;
 
     /// <summary>
-    /// Frames per callback buffer: 1600 samples = 100 ms at 16 kHz.
+    /// Frames per callback buffer: 2400 samples = 100 ms at 24 kHz.
     /// Balances low latency with reasonable callback overhead.
     /// </summary>
-    private const uint FramesPerBuffer = 1600;
+    private const uint FramesPerBuffer = 2400;
 
     /// <summary>Bytes per PCM16 sample.</summary>
     private const int BytesPerSample = 2;
@@ -115,6 +115,8 @@ public sealed class MicCapture : IMicCapture
     /// PortAudio input callback — fires from the audio thread.
     /// Copies PCM16 data into a managed byte array and raises <see cref="AudioCaptured"/>.
     /// </summary>
+    private int _callbackCount;
+
     private StreamCallbackResult OnInputCallback(
         IntPtr input,
         IntPtr output,
@@ -129,6 +131,10 @@ public sealed class MicCapture : IMicCapture
         int byteCount = (int)(frameCount * ChannelCount * BytesPerSample);
         var buffer = new byte[byteCount];
         Marshal.Copy(input, buffer, 0, byteCount);
+
+        _callbackCount++;
+        if (_callbackCount <= 3)
+            Console.Error.WriteLine($"[MicCapture] Callback #{_callbackCount}: {byteCount} bytes, frameCount={frameCount}");
 
         // Fire event — subscribers should not block the audio thread.
         AudioCaptured?.Invoke(buffer);

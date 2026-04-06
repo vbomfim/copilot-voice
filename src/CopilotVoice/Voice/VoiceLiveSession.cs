@@ -242,6 +242,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                 return;
 
             var type = typeProp.GetString();
+            Console.Error.WriteLine($"[VoiceLive] Event: {type}");
 
             switch (type)
             {
@@ -278,6 +279,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                     break;
 
                 case "error":
+                    Console.Error.WriteLine($"[VoiceLive] Error event: {json[..Math.Min(json.Length, 500)]}");
                     if (root.TryGetProperty("error", out var errorObj) &&
                         errorObj.TryGetProperty("message", out var errorMsg))
                     {
@@ -349,6 +351,19 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
     internal static Uri BuildWebSocketUri(VoiceLiveConfig config)
     {
         var endpoint = config.Endpoint.TrimEnd('/');
+
+        // If the endpoint already contains the full realtime URL path, use it directly
+        if (endpoint.Contains("/openai/realtime", StringComparison.OrdinalIgnoreCase))
+        {
+            if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                endpoint = "wss://" + endpoint[8..];
+            return new Uri(endpoint);
+        }
+
+        // Azure Realtime API requires the openai.azure.com domain, not cognitiveservices.azure.com
+        endpoint = endpoint.Replace(".cognitiveservices.azure.com", ".openai.azure.com",
+            StringComparison.OrdinalIgnoreCase);
+
         // Strip https:// and replace with wss://
         if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             endpoint = "wss://" + endpoint[8..];
@@ -356,7 +371,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             endpoint = "wss://" + endpoint;
 
         return new Uri(
-            $"{endpoint}/openai/realtime?api-version=2025-04-01-preview&deployment={config.Model}");
+            $"{endpoint}/openai/realtime?api-version=2024-10-01-preview&deployment={config.Model}");
     }
 
     internal static IDictionary<string, string> BuildHeaders(VoiceLiveConfig config)

@@ -259,18 +259,24 @@ public sealed class PushToTalkController : IPushToTalkController, IDisposable
         if (State != PushToTalkState.Recording)
             return;
 
+        Console.Error.WriteLine($"[PushToTalk] Audio chunk: {audio.Length} bytes");
         _ = SendAudioSafeAsync(audio);
     }
+
+    private int _sendCount;
 
     private async Task SendAudioSafeAsync(ReadOnlyMemory<byte> audio)
     {
         try
         {
             await _voiceSession.SendAudioAsync(audio).ConfigureAwait(false);
+            var count = Interlocked.Increment(ref _sendCount);
+            if (count <= 3)
+                Console.Error.WriteLine($"[PushToTalk] SendAudio OK #{count}: {audio.Length} bytes");
         }
         catch (Exception ex)
         {
-            Log($"SendAudio failed: {ex.Message}");
+            Log($"SendAudio FAILED: {ex.GetType().Name}: {ex.Message}");
         }
     }
 

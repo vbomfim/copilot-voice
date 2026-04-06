@@ -13,8 +13,8 @@ namespace CopilotVoice.Audio;
 /// </summary>
 public sealed class AudioPlayer : IAudioPlayer
 {
-    /// <summary>Sample rate required by Azure Voice Live API.</summary>
-    private const int SampleRate = 16000;
+    /// <summary>Sample rate required by Azure Voice Live API (24 kHz for pcm16).</summary>
+    private const int SampleRate = 24000;
 
     /// <summary>Mono channel.</summary>
     private const int ChannelCount = 1;
@@ -22,7 +22,7 @@ public sealed class AudioPlayer : IAudioPlayer
     /// <summary>
     /// Frames per callback buffer: 1600 samples = 100 ms at 16 kHz.
     /// </summary>
-    private const uint FramesPerBuffer = 1600;
+    private const uint FramesPerBuffer = 2400;
 
     /// <summary>Bytes per PCM16 sample.</summary>
     private const int BytesPerSample = 2;
