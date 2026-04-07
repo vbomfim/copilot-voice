@@ -72,15 +72,25 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             audio = Convert.ToBase64String(pcm16Audio.Span)
         });
 
+        if (Interlocked.Increment(ref _audioSendCount) == 1)
+            Console.Error.WriteLine($"[VoiceLive] First audio send ({json.Length} chars): {json[..Math.Min(json.Length, 120)]}...");
+
         await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
     }
+
+    private int _audioSendCount;
 
     public async Task CommitAudioAsync(CancellationToken ct = default)
     {
         ThrowIfDisposed();
 
-        var json = JsonSerializer.Serialize(new { type = "input_audio_buffer.commit" });
-        await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
+        // Trigger response first — the model starts processing the buffered audio immediately
+        var responseJson = JsonSerializer.Serialize(new { type = "response.create" });
+        await _connection.SendEventAsync(responseJson, ct).ConfigureAwait(false);
+
+        // Then commit the buffer (may error with "empty" if response.create already consumed it — benign)
+        var commitJson = JsonSerializer.Serialize(new { type = "input_audio_buffer.commit" });
+        await _connection.SendEventAsync(commitJson, ct).ConfigureAwait(false);
     }
 
     public async Task SendTextAsync(string text, CancellationToken ct = default)
@@ -280,10 +290,18 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
 
                 case "error":
                     Console.Error.WriteLine($"[VoiceLive] Error event: {json[..Math.Min(json.Length, 500)]}");
-                    if (root.TryGetProperty("error", out var errorObj) &&
-                        errorObj.TryGetProperty("message", out var errorMsg))
+                    if (root.TryGetProperty("error", out var errorObj))
                     {
-                        ErrorReceived?.Invoke(errorMsg.GetString() ?? "Unknown error");
+                        // Ignore benign commit-empty error — response.create already triggered processing
+                        var code = errorObj.TryGetProperty("code", out var codeProp) ? codeProp.GetString() : null;
+                        if (code == "input_audio_buffer_commit_empty")
+                        {
+                            Console.Error.WriteLine("[VoiceLive] Ignoring benign commit-empty error (response.create already sent)");
+                            break;
+                        }
+
+                        var msg = errorObj.TryGetProperty("message", out var errorMsg) ? errorMsg.GetString() : "Unknown error";
+                        ErrorReceived?.Invoke(msg ?? "Unknown error");
                     }
                     else
                     {
@@ -319,6 +337,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
         );
 
         var json = SerializeSessionUpdate(update);
+        Console.Error.WriteLine($"[VoiceLive] Sending session.update: {json[..Math.Min(json.Length, 400)]}");
         await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
     }
 
