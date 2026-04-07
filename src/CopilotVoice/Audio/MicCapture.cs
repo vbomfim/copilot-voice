@@ -1,102 +1,86 @@
-using System.Runtime.InteropServices;
-using PortAudioSharp;
+using System.Diagnostics;
 
 namespace CopilotVoice.Audio;
 
 /// <summary>
-/// Captures microphone audio in PCM16 format (16 kHz, mono) using PortAudio.
-/// Start/Stop are idempotent — calling Start while already capturing is a no-op.
-/// Thread-safe: the PortAudio callback fires from an audio thread; captured
-/// data is copied and delivered via the <see cref="AudioCaptured"/> event.
+/// Captures microphone audio in PCM16 format using sox/rec (macOS/Linux)
+/// or ffmpeg as fallback. Outputs 24kHz mono PCM16 for the Voice Live API.
 /// </summary>
 public sealed class MicCapture : IMicCapture
 {
-    /// <summary>Capture at 48kHz (widely supported), resample to 24kHz for API.</summary>
-    private const int CaptureSampleRate = 48000;
-
-    /// <summary>API expects 24kHz PCM16.</summary>
-    private const int ApiSampleRate = 24000;
-
-    /// <summary>Mono channel.</summary>
-    private const int ChannelCount = 1;
-
-    /// <summary>
-    /// Frames per callback buffer: 4800 samples = 100 ms at 48 kHz.
-    /// Balances low latency with reasonable callback overhead.
-    /// </summary>
-    private const uint FramesPerBuffer = 4800;
-
-    /// <summary>Bytes per PCM16 sample.</summary>
+    /// <summary>API expects 24kHz PCM16 mono.</summary>
+    private const int SampleRate = 24000;
+    private const int Channels = 1;
     private const int BytesPerSample = 2;
+    /// <summary>Read ~100ms chunks from the process.</summary>
+    private const int ChunkBytes = SampleRate * BytesPerSample * Channels / 10; // 4800 bytes
 
     private readonly object _lock = new();
-    private PortAudioSharp.Stream? _stream;
-    private bool _disposed;
+    private Process? _process;
     private volatile bool _isCapturing;
-    private bool _paInitialized;
+    private bool _disposed;
+    private CancellationTokenSource? _readCts;
+    private Task? _readTask;
 
     public bool IsCapturing => _isCapturing;
-
     public event Action<ReadOnlyMemory<byte>>? AudioCaptured;
 
-    /// <summary>Begin capturing audio from the default microphone.</summary>
-    /// <exception cref="InvalidOperationException">No microphone is available.</exception>
     public Task StartAsync(CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
         if (_isCapturing) return Task.CompletedTask;
 
         lock (_lock)
         {
             if (_isCapturing) return Task.CompletedTask;
 
-            PortAudioLifecycle.EnsureInitialized();
-            _paInitialized = true;
-
-            var inputDevice = PortAudioSharp.PortAudio.DefaultInputDevice;
-            if (inputDevice == PortAudioSharp.PortAudio.NoDevice)
+            // Use sox/rec to capture raw PCM16 audio from default mic
+            var psi = new ProcessStartInfo
             {
-                PortAudioLifecycle.Release();
-                _paInitialized = false;
-                throw new InvalidOperationException(
-                    "No microphone available. Check system audio settings.");
-            }
-
-            var deviceInfo = PortAudioSharp.PortAudio.GetDeviceInfo(inputDevice);
-            var inputParams = new StreamParameters
-            {
-                device = inputDevice,
-                channelCount = ChannelCount,
-                sampleFormat = SampleFormat.Int16,
-                suggestedLatency = deviceInfo.defaultLowInputLatency,
-                hostApiSpecificStreamInfo = IntPtr.Zero,
+                FileName = "rec",
+                // Output raw PCM16, 24kHz, mono, 16-bit to stdout
+                Arguments = "-q -r 24000 -c 1 -b 16 -e signed-integer -t raw -",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
             };
 
-            _stream = new PortAudioSharp.Stream(
-                inParams: inputParams,
-                outParams: null,
-                sampleRate: CaptureSampleRate,
-                framesPerBuffer: FramesPerBuffer,
-                streamFlags: StreamFlags.ClipOff,
-                callback: OnInputCallback,
-                userData: null!);
+            try
+            {
+                _process = Process.Start(psi);
+            }
+            catch (Exception)
+            {
+                // Try ffmpeg as fallback
+                psi.FileName = "ffmpeg";
+                psi.Arguments = "-f avfoundation -i :default -ar 24000 -ac 1 -f s16le -loglevel quiet -";
+                try
+                {
+                    _process = Process.Start(psi);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        "No audio capture tool found. Install sox (brew install sox) or ffmpeg.", ex);
+                }
+            }
 
-            _stream.Start();
+            if (_process is null)
+                throw new InvalidOperationException("Failed to start audio capture process.");
+
             _isCapturing = true;
+            _readCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
 
-            // Register cancellation to stop capture
-            if (ct.CanBeCanceled)
-                ct.Register(() => _ = StopAsync());
+            // Read audio data from stdout in a background task
+            _readTask = Task.Run(() => ReadAudioLoop(_process, _readCts.Token));
 
-            Console.Error.WriteLine(
-                $"[MicCapture] Started — device: {deviceInfo.name}, capture: {CaptureSampleRate} Hz, API: {ApiSampleRate} Hz");
+            Console.Error.WriteLine($"[MicCapture] Started — pid={_process.Id}, rate={SampleRate}Hz, format=PCM16 mono");
         }
 
         return Task.CompletedTask;
     }
 
-    /// <summary>Stop capturing audio. Idempotent — safe to call when not capturing.</summary>
     public Task StopAsync()
     {
         if (!_isCapturing) return Task.CompletedTask;
@@ -104,77 +88,60 @@ public sealed class MicCapture : IMicCapture
         lock (_lock)
         {
             if (!_isCapturing) return Task.CompletedTask;
-
             _isCapturing = false;
-            CleanupStream();
-
+            KillProcess();
             Console.Error.WriteLine("[MicCapture] Stopped");
         }
 
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// PortAudio input callback — fires from the audio thread.
-    /// Copies PCM16 data into a managed byte array and raises <see cref="AudioCaptured"/>.
-    /// </summary>
-    private int _callbackCount;
-
-    private StreamCallbackResult OnInputCallback(
-        IntPtr input,
-        IntPtr output,
-        uint frameCount,
-        ref StreamCallbackTimeInfo timeInfo,
-        StreamCallbackFlags statusFlags,
-        IntPtr userData)
+    private async Task ReadAudioLoop(Process proc, CancellationToken ct)
     {
-        if (!_isCapturing || input == IntPtr.Zero)
-            return StreamCallbackResult.Continue;
+        var buffer = new byte[ChunkBytes];
+        var stream = proc.StandardOutput.BaseStream;
 
-        int capturedBytes = (int)(frameCount * ChannelCount * BytesPerSample);
-        var capturedBuffer = new byte[capturedBytes];
-        Marshal.Copy(input, capturedBuffer, 0, capturedBytes);
-
-        // Downsample from 48kHz to 24kHz: take every other sample (2:1 ratio)
-        int resampledSamples = (int)frameCount / 2;
-        var resampledBuffer = new byte[resampledSamples * BytesPerSample];
-        for (int i = 0; i < resampledSamples; i++)
+        try
         {
-            int srcOffset = i * 2 * BytesPerSample; // skip every other sample
-            int dstOffset = i * BytesPerSample;
-            resampledBuffer[dstOffset] = capturedBuffer[srcOffset];
-            resampledBuffer[dstOffset + 1] = capturedBuffer[srcOffset + 1];
-        }
+            while (!ct.IsCancellationRequested && _isCapturing)
+            {
+                int totalRead = 0;
+                while (totalRead < ChunkBytes)
+                {
+                    int read = await stream.ReadAsync(
+                        buffer.AsMemory(totalRead, ChunkBytes - totalRead), ct);
+                    if (read == 0) break; // process ended
+                    totalRead += read;
+                }
 
-        _callbackCount++;
-        if (_callbackCount <= 3)
+                if (totalRead > 0 && _isCapturing)
+                {
+                    var chunk = buffer.AsMemory(0, totalRead);
+                    AudioCaptured?.Invoke(chunk);
+                }
+
+                if (totalRead == 0) break;
+            }
+        }
+        catch (OperationCanceledException) { /* expected */ }
+        catch (Exception ex)
         {
-            int nonZero = 0;
-            for (int i = 0; i < Math.Min(resampledBuffer.Length, 100); i++)
-                if (resampledBuffer[i] != 0) nonZero++;
-            Console.Error.WriteLine($"[MicCapture] Callback #{_callbackCount}: {resampledBuffer.Length} bytes (resampled from {capturedBytes}), nonZero={nonZero}/100");
+            Console.Error.WriteLine($"[MicCapture] Read error: {ex.Message}");
         }
-
-        AudioCaptured?.Invoke(resampledBuffer);
-
-        return StreamCallbackResult.Continue;
     }
 
-    /// <summary>Releases the PortAudio stream and PA reference.</summary>
-    private void CleanupStream()
+    private void KillProcess()
     {
-        if (_stream is not null)
+        _readCts?.Cancel();
+        if (_process is not null && !_process.HasExited)
         {
-            try { _stream.Abort(); } catch { /* stream may already be stopped */ }
-            try { _stream.Dispose(); } catch { /* best effort */ }
-            _stream = null;
+            try { _process.Kill(); } catch { /* best effort */ }
+            try { _process.WaitForExit(2000); } catch { }
         }
-
-        if (_paInitialized)
-        {
-            PortAudioLifecycle.Release();
-            _paInitialized = false;
-        }
+        try { _process?.Dispose(); } catch { }
+        _process = null;
+        _readCts?.Dispose();
+        _readCts = null;
     }
 
     public void Dispose()
@@ -184,7 +151,7 @@ public sealed class MicCapture : IMicCapture
             if (_disposed) return;
             _disposed = true;
             _isCapturing = false;
-            CleanupStream();
+            KillProcess();
         }
     }
 }

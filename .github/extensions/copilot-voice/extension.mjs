@@ -562,16 +562,17 @@ async function main() {
   }
 
   // Connect to companion app (backoff loop runs in background)
-  connectWithBackoff(session)
-    .then(() => {
-      // Once companion is reachable, start SSE listener
-      connectSSE(session);
-    })
-    .catch((err) => {
-      session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
-        level: "error",
-      });
-    });
+  // DISABLED for debugging — SSE connection not needed for push-to-talk testing
+  // connectWithBackoff(session)
+  //   .then(() => {
+  //     connectSSE(session);
+  //   })
+  //   .catch((err) => {
+  //     session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
+  //       level: "error",
+  //     });
+  //   });
+  session.log("SSE connection disabled for debugging", { level: "warning" });
 }
 
 // Guard: skip main() during testing so we can import helpers
