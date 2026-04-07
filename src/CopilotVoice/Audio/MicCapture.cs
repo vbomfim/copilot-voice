@@ -11,17 +11,20 @@ namespace CopilotVoice.Audio;
 /// </summary>
 public sealed class MicCapture : IMicCapture
 {
-    /// <summary>Sample rate required by Azure Voice Live API (24 kHz for pcm16).</summary>
-    private const int SampleRate = 24000;
+    /// <summary>Capture at 48kHz (widely supported), resample to 24kHz for API.</summary>
+    private const int CaptureSampleRate = 48000;
+
+    /// <summary>API expects 24kHz PCM16.</summary>
+    private const int ApiSampleRate = 24000;
 
     /// <summary>Mono channel.</summary>
     private const int ChannelCount = 1;
 
     /// <summary>
-    /// Frames per callback buffer: 2400 samples = 100 ms at 24 kHz.
+    /// Frames per callback buffer: 4800 samples = 100 ms at 48 kHz.
     /// Balances low latency with reasonable callback overhead.
     /// </summary>
-    private const uint FramesPerBuffer = 2400;
+    private const uint FramesPerBuffer = 4800;
 
     /// <summary>Bytes per PCM16 sample.</summary>
     private const int BytesPerSample = 2;
@@ -73,7 +76,7 @@ public sealed class MicCapture : IMicCapture
             _stream = new PortAudioSharp.Stream(
                 inParams: inputParams,
                 outParams: null,
-                sampleRate: SampleRate,
+                sampleRate: CaptureSampleRate,
                 framesPerBuffer: FramesPerBuffer,
                 streamFlags: StreamFlags.ClipOff,
                 callback: OnInputCallback,
@@ -87,7 +90,7 @@ public sealed class MicCapture : IMicCapture
                 ct.Register(() => _ = StopAsync());
 
             Console.Error.WriteLine(
-                $"[MicCapture] Started — device: {deviceInfo.name}, rate: {SampleRate} Hz");
+                $"[MicCapture] Started — device: {deviceInfo.name}, capture: {CaptureSampleRate} Hz, API: {ApiSampleRate} Hz");
         }
 
         return Task.CompletedTask;
@@ -128,16 +131,31 @@ public sealed class MicCapture : IMicCapture
         if (!_isCapturing || input == IntPtr.Zero)
             return StreamCallbackResult.Continue;
 
-        int byteCount = (int)(frameCount * ChannelCount * BytesPerSample);
-        var buffer = new byte[byteCount];
-        Marshal.Copy(input, buffer, 0, byteCount);
+        int capturedBytes = (int)(frameCount * ChannelCount * BytesPerSample);
+        var capturedBuffer = new byte[capturedBytes];
+        Marshal.Copy(input, capturedBuffer, 0, capturedBytes);
+
+        // Downsample from 48kHz to 24kHz: take every other sample (2:1 ratio)
+        int resampledSamples = (int)frameCount / 2;
+        var resampledBuffer = new byte[resampledSamples * BytesPerSample];
+        for (int i = 0; i < resampledSamples; i++)
+        {
+            int srcOffset = i * 2 * BytesPerSample; // skip every other sample
+            int dstOffset = i * BytesPerSample;
+            resampledBuffer[dstOffset] = capturedBuffer[srcOffset];
+            resampledBuffer[dstOffset + 1] = capturedBuffer[srcOffset + 1];
+        }
 
         _callbackCount++;
         if (_callbackCount <= 3)
-            Console.Error.WriteLine($"[MicCapture] Callback #{_callbackCount}: {byteCount} bytes, frameCount={frameCount}");
+        {
+            int nonZero = 0;
+            for (int i = 0; i < Math.Min(resampledBuffer.Length, 100); i++)
+                if (resampledBuffer[i] != 0) nonZero++;
+            Console.Error.WriteLine($"[MicCapture] Callback #{_callbackCount}: {resampledBuffer.Length} bytes (resampled from {capturedBytes}), nonZero={nonZero}/100");
+        }
 
-        // Fire event — subscribers should not block the audio thread.
-        AudioCaptured?.Invoke(buffer);
+        AudioCaptured?.Invoke(resampledBuffer);
 
         return StreamCallbackResult.Continue;
     }

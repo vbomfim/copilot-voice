@@ -84,13 +84,12 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
     {
         ThrowIfDisposed();
 
-        // Trigger response first — the model starts processing the buffered audio immediately
-        var responseJson = JsonSerializer.Serialize(new { type = "response.create" });
-        await _connection.SendEventAsync(responseJson, ct).ConfigureAwait(false);
-
-        // Then commit the buffer (may error with "empty" if response.create already consumed it — benign)
+        // Commit the audio buffer first, then trigger response
         var commitJson = JsonSerializer.Serialize(new { type = "input_audio_buffer.commit" });
         await _connection.SendEventAsync(commitJson, ct).ConfigureAwait(false);
+
+        var responseJson = JsonSerializer.Serialize(new { type = "response.create" });
+        await _connection.SendEventAsync(responseJson, ct).ConfigureAwait(false);
     }
 
     public async Task SendTextAsync(string text, CancellationToken ct = default)
@@ -252,7 +251,10 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                 return;
 
             var type = typeProp.GetString();
-            Console.Error.WriteLine($"[VoiceLive] Event: {type}");
+
+            // Only log non-streaming events (skip noisy audio/transcript deltas)
+            if (type is not "response.audio.delta" and not "response.audio_transcript.delta")
+                Console.Error.WriteLine($"[VoiceLive] Event: {type}");
 
             switch (type)
             {
@@ -331,7 +333,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             Modalities: new[] { "audio", "text" },
             Voice: _config.Voice,
             Instructions: string.IsNullOrEmpty(_config.SystemInstructions)
-                ? "You are a voice interface for GitHub Copilot CLI. Help the developer by executing commands, reading files, and providing context about their coding session."
+                ? "You are a voice interface for GitHub Copilot CLI. Always respond in English. Help the developer by executing commands, reading files, and providing context about their coding session. Keep responses concise — 1-2 sentences spoken aloud."
                 : _config.SystemInstructions,
             Tools: tools
         );
@@ -361,6 +363,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                 instructions = update.Instructions,
                 input_audio_format = update.InputAudioFormat,
                 output_audio_format = update.OutputAudioFormat,
+                turn_detection = (object?)null, // Disable server-side VAD — we control turns via push-to-talk
                 tools,
                 tool_choice = update.ToolChoice
             }
