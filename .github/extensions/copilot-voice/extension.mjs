@@ -273,10 +273,14 @@ export function createToolHandler(path) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(args),
-        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        signal: AbortSignal.timeout(30_000), // /speak waits for Realtime API response
       });
       if (!response.ok) {
         return `Voice companion returned error: HTTP ${response.status}`;
+      }
+      const result = await response.json();
+      if (result.transcript) {
+        return `Agent replied: ${result.transcript}`;
       }
       return `Voice command sent successfully to ${path}`;
     } catch {
@@ -562,16 +566,17 @@ async function main() {
   }
 
   // Connect to companion app (backoff loop runs in background)
-  connectWithBackoff(session)
-    .then(() => {
-      // Once companion is reachable, start SSE listener
-      connectSSE(session);
-    })
-    .catch((err) => {
-      session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
-        level: "error",
-      });
-    });
+  // DISABLED — copilot-voice app is not running, Keryxis is on this port now
+  // connectWithBackoff(session)
+  //   .then(() => {
+  //     connectSSE(session);
+  //   })
+  //   .catch((err) => {
+  //     session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
+  //       level: "error",
+  //     });
+  //   });
+  session.log("SSE connection disabled — use Keryxis extension instead", { level: "info" });
 }
 
 // Guard: skip main() during testing so we can import helpers

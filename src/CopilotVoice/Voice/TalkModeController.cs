@@ -58,6 +58,7 @@ public sealed class TalkModeController : ITalkModeController, IDisposable
     private TalkModeState _state = TalkModeState.Off;
     private CancellationTokenSource? _sessionCts;
     private bool _disposed;
+    private volatile bool _activating;
 
     /// <summary>Maximum audio buffer size (10 MB) to prevent unbounded memory growth.</summary>
     private const int MaxAudioBufferBytes = 10 * 1024 * 1024;
@@ -67,7 +68,7 @@ public sealed class TalkModeController : ITalkModeController, IDisposable
         get { lock (_stateLock) return _state; }
     }
 
-    public bool IsActive => State != TalkModeState.Off;
+    public bool IsActive => _activating || State != TalkModeState.Off;
 
     public event Action<TalkModeState>? StateChanged;
 
@@ -90,8 +91,9 @@ public sealed class TalkModeController : ITalkModeController, IDisposable
     {
         lock (_stateLock)
         {
-            if (_state != TalkModeState.Off)
+            if (_state != TalkModeState.Off || _activating)
                 return;
+            _activating = true;
         }
 
         _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -111,6 +113,10 @@ public sealed class TalkModeController : ITalkModeController, IDisposable
             UnwireEvents();
             _sessionCts?.Dispose();
             _sessionCts = null;
+        }
+        finally
+        {
+            _activating = false;
         }
     }
 

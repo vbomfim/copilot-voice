@@ -133,7 +133,7 @@ public sealed class AppServices : IDisposable
         catch (Exception ex)
         {
             Log($"Bridge server failed: {ex.Message}");
-            return;
+            // Don't abort — Voice Live API can work without the bridge
         }
 
         // 2. Connect to Voice Live API (if credentials configured)
@@ -143,6 +143,8 @@ public sealed class AppServices : IDisposable
         var envEndpoint = Environment.GetEnvironmentVariable("AZURE_VOICELIVE_ENDPOINT");
         if (string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(envEndpoint))
             endpoint = envEndpoint;
+
+        Log($"Voice Live: endpoint={endpoint?[..Math.Min(endpoint?.Length ?? 0, 60)]}..., key={(apiKey is not null ? apiKey[..Math.Min(apiKey.Length, 8)] + "..." : "NULL")}");
 
         if (!string.IsNullOrEmpty(endpoint))
         {
@@ -239,6 +241,100 @@ public sealed class AppServices : IDisposable
 
             await _pttController.StartAsync();
             Log("PushToTalkController: started");
+
+            // 6. Wire bridge /speak endpoint → Realtime API
+            if (_bridgeServer is not null)
+            {
+                var audioBuffer = new List<byte>();
+                var bufferLock = new object();
+                var transcriptBuilder = new System.Text.StringBuilder();
+                var transcriptLock = new object();
+
+                _bridgeServer.SpeakRequested += text =>
+                {
+                    if (_voiceLiveSession is null) return;
+
+                    lock (bufferLock) { audioBuffer.Clear(); }
+
+                    // Subscribe to audio for this response
+                    void onAudio(ReadOnlyMemory<byte> audio)
+                    {
+                        lock (bufferLock) { audioBuffer.AddRange(audio.ToArray()); }
+                    }
+                    void onDone()
+                    {
+                        _voiceLiveSession.AudioReceived -= onAudio;
+                        _voiceLiveSession.ResponseDone -= onDone;
+                        _voiceLiveSession.TranscriptReceived -= onTranscript;
+
+                        byte[] toPlay;
+                        lock (bufferLock) { toPlay = audioBuffer.ToArray(); audioBuffer.Clear(); }
+
+                        if (toPlay.Length > 0 && _audioPlayer is not null)
+                            _ = _audioPlayer.PlayAsync(toPlay);
+
+                        // Send transcript back to bridge so /speak can return it
+                        lock (transcriptLock)
+                        {
+                            _bridgeServer.NotifySpeakResponse(transcriptBuilder.ToString());
+                            transcriptBuilder.Clear();
+                        }
+                    }
+
+                    _voiceLiveSession.AudioReceived += onAudio;
+                    _voiceLiveSession.ResponseDone += onDone;
+
+                    // Collect transcript deltas
+                    void onTranscript(string delta)
+                    {
+                        lock (transcriptLock) { transcriptBuilder.Append(delta); }
+                    }
+                    _voiceLiveSession.TranscriptReceived += onTranscript;
+
+                    _ = _voiceLiveSession.SendTextAsync(text);
+                    Log($"Bridge → Realtime API: \"{text[..Math.Min(text.Length, 60)]}\"");
+                };
+                Log("Bridge /speak → Realtime API wired");
+
+                _bridgeServer.TalkModeToggleRequested += () => ToggleTalkMode();
+                Log("Bridge /talkmode → Talk Mode wired");
+            }
+
+            // 7. Forward ALL agent transcripts to CLI sessions
+            //    This covers both push-to-talk and /speak responses
+            if (_bridgeServer is not null)
+            {
+                var fullTranscript = new System.Text.StringBuilder();
+                var tLock = new object();
+
+                _voiceLiveSession.TranscriptReceived += delta =>
+                {
+                    lock (tLock) { fullTranscript.Append(delta); }
+                };
+
+                _voiceLiveSession.ResponseDone += () =>
+                {
+                    string transcript;
+                    lock (tLock)
+                    {
+                        transcript = fullTranscript.ToString();
+                        fullTranscript.Clear();
+                    }
+
+                    if (string.IsNullOrWhiteSpace(transcript)) return;
+
+                    // Forward to all connected CLI sessions
+                    var sessions = _bridgeServer.SessionBridge.ConnectedSessions;
+                    foreach (var sid in sessions)
+                    {
+                        _bridgeServer.SessionBridge.QueueCommand(sid,
+                            new SendPromptCommand(
+                                $"[Voice Agent said to user]: {transcript}"));
+                    }
+                    Log($"Agent transcript → CLI: \"{transcript[..Math.Min(transcript.Length, 80)]}\"");
+                };
+                Log("Agent transcript → CLI forwarding wired");
+            }
         }
     }
 
@@ -248,6 +344,9 @@ public sealed class AppServices : IDisposable
 
     /// <summary>Whether Talk Mode is currently active.</summary>
     public bool IsTalkModeActive => _talkModeController?.IsActive ?? false;
+
+    /// <summary>Toggle Talk Mode on/off. Called from UI button or bridge endpoint.</summary>
+    public void ToggleTalkMode() => HandleDoubleTap();
 
     /// <summary>
     /// Hotkey press handler with double-tap detection.

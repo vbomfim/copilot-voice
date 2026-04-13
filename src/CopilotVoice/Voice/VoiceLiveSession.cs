@@ -72,15 +72,24 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             audio = Convert.ToBase64String(pcm16Audio.Span)
         });
 
+        if (Interlocked.Increment(ref _audioSendCount) == 1)
+            Console.Error.WriteLine($"[VoiceLive] First audio send ({json.Length} chars): {json[..Math.Min(json.Length, 120)]}...");
+
         await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
     }
+
+    private int _audioSendCount;
 
     public async Task CommitAudioAsync(CancellationToken ct = default)
     {
         ThrowIfDisposed();
 
-        var json = JsonSerializer.Serialize(new { type = "input_audio_buffer.commit" });
-        await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
+        // Commit the audio buffer first, then trigger response
+        var commitJson = JsonSerializer.Serialize(new { type = "input_audio_buffer.commit" });
+        await _connection.SendEventAsync(commitJson, ct).ConfigureAwait(false);
+
+        var responseJson = JsonSerializer.Serialize(new { type = "response.create" });
+        await _connection.SendEventAsync(responseJson, ct).ConfigureAwait(false);
     }
 
     public async Task SendTextAsync(string text, CancellationToken ct = default)
@@ -243,6 +252,10 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
 
             var type = typeProp.GetString();
 
+            // Only log non-streaming events (skip noisy audio/transcript deltas)
+            if (type is not "response.audio.delta" and not "response.audio_transcript.delta")
+                Console.Error.WriteLine($"[VoiceLive] Event: {type}");
+
             switch (type)
             {
                 case "session.created":
@@ -278,10 +291,19 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                     break;
 
                 case "error":
-                    if (root.TryGetProperty("error", out var errorObj) &&
-                        errorObj.TryGetProperty("message", out var errorMsg))
+                    Console.Error.WriteLine($"[VoiceLive] Error event: {json[..Math.Min(json.Length, 500)]}");
+                    if (root.TryGetProperty("error", out var errorObj))
                     {
-                        ErrorReceived?.Invoke(errorMsg.GetString() ?? "Unknown error");
+                        // Ignore benign commit-empty error — response.create already triggered processing
+                        var code = errorObj.TryGetProperty("code", out var codeProp) ? codeProp.GetString() : null;
+                        if (code == "input_audio_buffer_commit_empty")
+                        {
+                            Console.Error.WriteLine("[VoiceLive] Ignoring benign commit-empty error (response.create already sent)");
+                            break;
+                        }
+
+                        var msg = errorObj.TryGetProperty("message", out var errorMsg) ? errorMsg.GetString() : "Unknown error";
+                        ErrorReceived?.Invoke(msg ?? "Unknown error");
                     }
                     else
                     {
@@ -311,12 +333,13 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             Modalities: new[] { "audio", "text" },
             Voice: _config.Voice,
             Instructions: string.IsNullOrEmpty(_config.SystemInstructions)
-                ? "You are a voice interface for GitHub Copilot CLI. Help the developer by executing commands, reading files, and providing context about their coding session."
+                ? "You are a voice interface for GitHub Copilot CLI. Always respond in English. Help the developer by executing commands, reading files, and providing context about their coding session. Keep responses concise — 1-2 sentences spoken aloud."
                 : _config.SystemInstructions,
             Tools: tools
         );
 
         var json = SerializeSessionUpdate(update);
+        Console.Error.WriteLine($"[VoiceLive] Sending session.update: {json[..Math.Min(json.Length, 400)]}");
         await _connection.SendEventAsync(json, ct).ConfigureAwait(false);
     }
 
@@ -340,6 +363,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
                 instructions = update.Instructions,
                 input_audio_format = update.InputAudioFormat,
                 output_audio_format = update.OutputAudioFormat,
+                turn_detection = (object?)null, // Disable server-side VAD — we control turns via push-to-talk
                 tools,
                 tool_choice = update.ToolChoice
             }
@@ -349,6 +373,19 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
     internal static Uri BuildWebSocketUri(VoiceLiveConfig config)
     {
         var endpoint = config.Endpoint.TrimEnd('/');
+
+        // If the endpoint already contains the full realtime URL path, use it directly
+        if (endpoint.Contains("/openai/realtime", StringComparison.OrdinalIgnoreCase))
+        {
+            if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                endpoint = "wss://" + endpoint[8..];
+            return new Uri(endpoint);
+        }
+
+        // Azure Realtime API requires the openai.azure.com domain, not cognitiveservices.azure.com
+        endpoint = endpoint.Replace(".cognitiveservices.azure.com", ".openai.azure.com",
+            StringComparison.OrdinalIgnoreCase);
+
         // Strip https:// and replace with wss://
         if (endpoint.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             endpoint = "wss://" + endpoint[8..];
@@ -356,7 +393,7 @@ public sealed class VoiceLiveSession : IVoiceLiveSession
             endpoint = "wss://" + endpoint;
 
         return new Uri(
-            $"{endpoint}/openai/realtime?api-version=2025-04-01-preview&deployment={config.Model}");
+            $"{endpoint}/openai/realtime?api-version=2024-10-01-preview&deployment={config.Model}");
     }
 
     internal static IDictionary<string, string> BuildHeaders(VoiceLiveConfig config)

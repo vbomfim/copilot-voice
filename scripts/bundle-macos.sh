@@ -16,11 +16,11 @@ fi
 
 PUBLISH_DIR="/tmp/copilot-voice-publish"
 APP_BUNDLE="/tmp/CopilotVoice.app"
-INSTALL_DIR="$HOME/Applications/CopilotVoice.app"
+INSTALL_DIR="/Applications/CopilotVoice.app"
 
 echo "Publishing ($RID)..."
 "$DOTNET" publish "$CSPROJ" -c Release -r "$RID" --self-contained \
-    -p:PublishSingleFile=true -o "$PUBLISH_DIR" 2>&1 | tail -3
+    -p:PublishSingleFile=false -o "$PUBLISH_DIR" 2>&1 | tail -3
 
 echo "Creating app bundle..."
 rm -rf "$APP_BUNDLE"
@@ -30,10 +30,8 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # Copy Info.plist
 cp "$PROJECT_DIR/src/$APP_NAME/Info.plist" "$APP_BUNDLE/Contents/"
 
-# Copy executable and native libs
-cp "$PUBLISH_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/"
-cp "$PUBLISH_DIR/"*.dylib "$APP_BUNDLE/Contents/MacOS/" 2>/dev/null || true
-cp -r "$PUBLISH_DIR/Assets" "$APP_BUNDLE/Contents/MacOS/" 2>/dev/null || true
+# Copy ALL published files (executable, native libs, deps)
+cp -R "$PUBLISH_DIR/"* "$APP_BUNDLE/Contents/MacOS/"
 
 # Copy icon
 cp "$PROJECT_DIR/src/$APP_NAME/Assets/CopilotVoice.icns" "$APP_BUNDLE/Contents/Resources/"

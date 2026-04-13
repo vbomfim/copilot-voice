@@ -89,6 +89,13 @@ public partial class AvatarWindow : Window
             StopRecordBlink();
             e.Handled = true;
         }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+
+        // Talk Mode toggle button
+        TalkModeButton.AddHandler(Avalonia.Input.InputElement.PointerPressedEvent, (_, e) =>
+        {
+            _services?.ToggleTalkMode();
+            e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
     public void SetServices(AppServices services)
@@ -296,6 +303,13 @@ public partial class AvatarWindow : Window
             StartRecordBlink();
         else if (state != "Recording" && _isRecordBlinking)
             StopRecordBlink();
+
+        // Update Talk Mode button appearance
+        bool talkModeActive = state.StartsWith("TalkMode:");
+        TalkModeButton.Background = new Avalonia.Media.SolidColorBrush(
+            Avalonia.Media.Color.Parse(talkModeActive ? "#2D5A27" : "#3B3B5C"));
+        TalkModeIcon.Text = talkModeActive ? "🔴" : "🎙️";
+        ToolTip.SetTip(TalkModeButton, talkModeActive ? "Stop Talk Mode" : "Start Talk Mode");
     }
 
     private void StartRecordBlink()

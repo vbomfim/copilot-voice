@@ -37,6 +37,18 @@ public sealed class BridgeServer : IAsyncDisposable
     /// <summary>Fired when a speak request is received (text to be spoken).</summary>
     public event Action<string>? SpeakRequested;
 
+    /// <summary>Last transcript received from the Realtime API in response to a /speak request.</summary>
+    public string? LastSpeakTranscript { get; private set; }
+
+    /// <summary>Fired when the Realtime API finishes responding to a /speak request.</summary>
+    public event Action<string>? SpeakResponseReady;
+
+    /// <summary>Raise the SpeakResponseReady event from outside the class.</summary>
+    public void NotifySpeakResponse(string transcript) => SpeakResponseReady?.Invoke(transcript);
+
+    /// <summary>Fired when a Talk Mode toggle is requested.</summary>
+    public event Action? TalkModeToggleRequested;
+
     /// <summary>Fired when an avatar expression change is requested.</summary>
     public event Action<string>? AvatarRequested;
 
@@ -82,6 +94,7 @@ public sealed class BridgeServer : IAsyncDisposable
         app.MapPost("/cli/send", (Delegate)HandleCliSend);
         app.MapPost("/speak", (Delegate)HandleSpeak);
         app.MapPost("/avatar", (Delegate)HandleAvatar);
+        app.MapPost("/talkmode", (Delegate)HandleTalkMode);
     }
 
     private IResult HandleHealth()
@@ -286,10 +299,25 @@ public sealed class BridgeServer : IAsyncDisposable
                 return Results.BadRequest(new { error = "missing required field: text" });
             }
 
-            SpeakRequested?.Invoke(textProp.GetString()!);
-        }
+            // Wait for the Realtime API to finish responding (up to 30s)
+            var tcs = new TaskCompletionSource<string>();
+            void onResponse(string transcript) => tcs.TrySetResult(transcript);
+            SpeakResponseReady += onResponse;
 
-        return Results.Ok(new { status = "ok" });
+            SpeakRequested?.Invoke(textProp.GetString()!);
+
+            var timeout = Task.Delay(TimeSpan.FromSeconds(30));
+            var completed = await Task.WhenAny(tcs.Task, timeout);
+
+            SpeakResponseReady -= onResponse;
+
+            if (completed == tcs.Task)
+            {
+                return Results.Ok(new { status = "ok", transcript = tcs.Task.Result });
+            }
+
+            return Results.Ok(new { status = "ok", transcript = "(no response within 30s)" });
+        }
     }
 
     private async Task<IResult> HandleAvatar(HttpContext context)
@@ -320,6 +348,12 @@ public sealed class BridgeServer : IAsyncDisposable
             AvatarRequested?.Invoke(exprProp.GetString()!);
         }
 
+        return Results.Ok(new { status = "ok" });
+    }
+
+    private IResult HandleTalkMode()
+    {
+        TalkModeToggleRequested?.Invoke();
         return Results.Ok(new { status = "ok" });
     }
 
