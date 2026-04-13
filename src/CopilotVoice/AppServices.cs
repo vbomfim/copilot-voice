@@ -296,6 +296,42 @@ public sealed class AppServices : IDisposable
                 };
                 Log("Bridge /speak → Realtime API wired");
             }
+
+            // 7. Forward ALL agent transcripts to CLI sessions
+            //    This covers both push-to-talk and /speak responses
+            if (_bridgeServer is not null)
+            {
+                var fullTranscript = new System.Text.StringBuilder();
+                var tLock = new object();
+
+                _voiceLiveSession.TranscriptReceived += delta =>
+                {
+                    lock (tLock) { fullTranscript.Append(delta); }
+                };
+
+                _voiceLiveSession.ResponseDone += () =>
+                {
+                    string transcript;
+                    lock (tLock)
+                    {
+                        transcript = fullTranscript.ToString();
+                        fullTranscript.Clear();
+                    }
+
+                    if (string.IsNullOrWhiteSpace(transcript)) return;
+
+                    // Forward to all connected CLI sessions
+                    var sessions = _bridgeServer.SessionBridge.ConnectedSessions;
+                    foreach (var sid in sessions)
+                    {
+                        _bridgeServer.SessionBridge.QueueCommand(sid,
+                            new SendPromptCommand(
+                                $"[Voice Agent said to user]: {transcript}"));
+                    }
+                    Log($"Agent transcript → CLI: \"{transcript[..Math.Min(transcript.Length, 80)]}\"");
+                };
+                Log("Agent transcript → CLI forwarding wired");
+            }
         }
     }
 
