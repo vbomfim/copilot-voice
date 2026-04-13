@@ -5,6 +5,14 @@ namespace CopilotVoice.Audio;
 /// <summary>
 /// Captures microphone audio in PCM16 format using sox/rec (macOS/Linux)
 /// or ffmpeg as fallback. Outputs 24kHz mono PCM16 for the Voice Live API.
+///
+/// Why not PortAudio? On macOS, Avalonia creates a GUI window which makes
+/// the dotnet process subject to GUI app microphone permission rules.
+/// Without NSMicrophoneUsageDescription in a signed .app bundle's Info.plist,
+/// CoreAudio silently returns all-zero buffers. Spawning rec/ffmpeg as a
+/// child process bypasses this because CLI tools inherit the terminal's
+/// microphone permission. When published as a proper .app bundle with
+/// Info.plist, PortAudio can be used directly.
 /// </summary>
 public sealed class MicCapture : IMicCapture
 {
