@@ -566,15 +566,17 @@ async function main() {
   }
 
   // Connect to companion app (backoff loop runs in background)
-  connectWithBackoff(session)
-    .then(() => {
-      connectSSE(session);
-    })
-    .catch((err) => {
-      session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
-        level: "error",
-      });
-    });
+  // DISABLED — copilot-voice app is not running, Keryxis is on this port now
+  // connectWithBackoff(session)
+  //   .then(() => {
+  //     connectSSE(session);
+  //   })
+  //   .catch((err) => {
+  //     session.log(`Connection failed: ${err?.message ?? "unknown error"}`, {
+  //       level: "error",
+  //     });
+  //   });
+  session.log("SSE connection disabled — use Keryxis extension instead", { level: "info" });
 }
 
 // Guard: skip main() during testing so we can import helpers
