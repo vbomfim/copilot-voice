@@ -133,7 +133,7 @@ public sealed class AppServices : IDisposable
         catch (Exception ex)
         {
             Log($"Bridge server failed: {ex.Message}");
-            return;
+            // Don't abort — Voice Live API can work without the bridge
         }
 
         // 2. Connect to Voice Live API (if credentials configured)
@@ -143,6 +143,8 @@ public sealed class AppServices : IDisposable
         var envEndpoint = Environment.GetEnvironmentVariable("AZURE_VOICELIVE_ENDPOINT");
         if (string.IsNullOrEmpty(endpoint) && !string.IsNullOrEmpty(envEndpoint))
             endpoint = envEndpoint;
+
+        Log($"Voice Live: endpoint={endpoint?[..Math.Min(endpoint?.Length ?? 0, 60)]}..., key={(apiKey is not null ? apiKey[..Math.Min(apiKey.Length, 8)] + "..." : "NULL")}");
 
         if (!string.IsNullOrEmpty(endpoint))
         {

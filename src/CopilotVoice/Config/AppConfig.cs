@@ -7,7 +7,6 @@ public class AppConfig
     // Authentication
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public AuthMode AuthMode { get; set; } = AuthMode.SignIn;
-    [System.Text.Json.Serialization.JsonIgnore]
     public string? AzureSpeechKey { get; set; }
     public string AzureSpeechRegion { get; set; } = "centralus";
     public string? AzureResourceName { get; set; }
@@ -53,7 +52,6 @@ public class AppConfig
 
     // Voice Live API
     public string? VoiceLiveEndpoint { get; set; }
-    [System.Text.Json.Serialization.JsonIgnore]
     public string? VoiceLiveKey { get; set; }
     public string VoiceLiveModel { get; set; } = "gpt-realtime";
     public string VoiceLiveVoice { get; set; } = "alloy";
