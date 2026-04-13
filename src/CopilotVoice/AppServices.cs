@@ -241,6 +241,44 @@ public sealed class AppServices : IDisposable
 
             await _pttController.StartAsync();
             Log("PushToTalkController: started");
+
+            // 6. Wire bridge /speak endpoint → Realtime API
+            if (_bridgeServer is not null)
+            {
+                var audioBuffer = new List<byte>();
+                var bufferLock = new object();
+
+                _bridgeServer.SpeakRequested += text =>
+                {
+                    if (_voiceLiveSession is null) return;
+
+                    lock (bufferLock) { audioBuffer.Clear(); }
+
+                    // Subscribe to audio for this response
+                    void onAudio(ReadOnlyMemory<byte> audio)
+                    {
+                        lock (bufferLock) { audioBuffer.AddRange(audio.ToArray()); }
+                    }
+                    void onDone()
+                    {
+                        _voiceLiveSession.AudioReceived -= onAudio;
+                        _voiceLiveSession.ResponseDone -= onDone;
+
+                        byte[] toPlay;
+                        lock (bufferLock) { toPlay = audioBuffer.ToArray(); audioBuffer.Clear(); }
+
+                        if (toPlay.Length > 0 && _audioPlayer is not null)
+                            _ = _audioPlayer.PlayAsync(toPlay);
+                    }
+
+                    _voiceLiveSession.AudioReceived += onAudio;
+                    _voiceLiveSession.ResponseDone += onDone;
+
+                    _ = _voiceLiveSession.SendTextAsync(text);
+                    Log($"Bridge → Realtime API: \"{text[..Math.Min(text.Length, 60)]}\"");
+                };
+                Log("Bridge /speak → Realtime API wired");
+            }
         }
     }
 
