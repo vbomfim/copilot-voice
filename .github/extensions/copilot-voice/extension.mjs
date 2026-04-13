@@ -273,10 +273,14 @@ export function createToolHandler(path) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(args),
-        signal: AbortSignal.timeout(HTTP_TIMEOUT_MS),
+        signal: AbortSignal.timeout(30_000), // /speak waits for Realtime API response
       });
       if (!response.ok) {
         return `Voice companion returned error: HTTP ${response.status}`;
+      }
+      const result = await response.json();
+      if (result.transcript) {
+        return `Agent replied: ${result.transcript}`;
       }
       return `Voice command sent successfully to ${path}`;
     } catch {
