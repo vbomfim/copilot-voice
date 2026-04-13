@@ -247,6 +247,8 @@ public sealed class AppServices : IDisposable
             {
                 var audioBuffer = new List<byte>();
                 var bufferLock = new object();
+                var transcriptBuilder = new System.Text.StringBuilder();
+                var transcriptLock = new object();
 
                 _bridgeServer.SpeakRequested += text =>
                 {
@@ -263,16 +265,31 @@ public sealed class AppServices : IDisposable
                     {
                         _voiceLiveSession.AudioReceived -= onAudio;
                         _voiceLiveSession.ResponseDone -= onDone;
+                        _voiceLiveSession.TranscriptReceived -= onTranscript;
 
                         byte[] toPlay;
                         lock (bufferLock) { toPlay = audioBuffer.ToArray(); audioBuffer.Clear(); }
 
                         if (toPlay.Length > 0 && _audioPlayer is not null)
                             _ = _audioPlayer.PlayAsync(toPlay);
+
+                        // Send transcript back to bridge so /speak can return it
+                        lock (transcriptLock)
+                        {
+                            _bridgeServer.NotifySpeakResponse(transcriptBuilder.ToString());
+                            transcriptBuilder.Clear();
+                        }
                     }
 
                     _voiceLiveSession.AudioReceived += onAudio;
                     _voiceLiveSession.ResponseDone += onDone;
+
+                    // Collect transcript deltas
+                    void onTranscript(string delta)
+                    {
+                        lock (transcriptLock) { transcriptBuilder.Append(delta); }
+                    }
+                    _voiceLiveSession.TranscriptReceived += onTranscript;
 
                     _ = _voiceLiveSession.SendTextAsync(text);
                     Log($"Bridge → Realtime API: \"{text[..Math.Min(text.Length, 60)]}\"");
