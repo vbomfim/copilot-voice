@@ -46,6 +46,9 @@ public sealed class BridgeServer : IAsyncDisposable
     /// <summary>Raise the SpeakResponseReady event from outside the class.</summary>
     public void NotifySpeakResponse(string transcript) => SpeakResponseReady?.Invoke(transcript);
 
+    /// <summary>Fired when a Talk Mode toggle is requested.</summary>
+    public event Action? TalkModeToggleRequested;
+
     /// <summary>Fired when an avatar expression change is requested.</summary>
     public event Action<string>? AvatarRequested;
 
@@ -91,6 +94,7 @@ public sealed class BridgeServer : IAsyncDisposable
         app.MapPost("/cli/send", (Delegate)HandleCliSend);
         app.MapPost("/speak", (Delegate)HandleSpeak);
         app.MapPost("/avatar", (Delegate)HandleAvatar);
+        app.MapPost("/talkmode", (Delegate)HandleTalkMode);
     }
 
     private IResult HandleHealth()
@@ -344,6 +348,12 @@ public sealed class BridgeServer : IAsyncDisposable
             AvatarRequested?.Invoke(exprProp.GetString()!);
         }
 
+        return Results.Ok(new { status = "ok" });
+    }
+
+    private IResult HandleTalkMode()
+    {
+        TalkModeToggleRequested?.Invoke();
         return Results.Ok(new { status = "ok" });
     }
 

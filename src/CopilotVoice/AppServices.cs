@@ -295,6 +295,9 @@ public sealed class AppServices : IDisposable
                     Log($"Bridge → Realtime API: \"{text[..Math.Min(text.Length, 60)]}\"");
                 };
                 Log("Bridge /speak → Realtime API wired");
+
+                _bridgeServer.TalkModeToggleRequested += () => ToggleTalkMode();
+                Log("Bridge /talkmode → Talk Mode wired");
             }
 
             // 7. Forward ALL agent transcripts to CLI sessions
@@ -341,6 +344,9 @@ public sealed class AppServices : IDisposable
 
     /// <summary>Whether Talk Mode is currently active.</summary>
     public bool IsTalkModeActive => _talkModeController?.IsActive ?? false;
+
+    /// <summary>Toggle Talk Mode on/off. Called from UI button or bridge endpoint.</summary>
+    public void ToggleTalkMode() => HandleDoubleTap();
 
     /// <summary>
     /// Hotkey press handler with double-tap detection.
